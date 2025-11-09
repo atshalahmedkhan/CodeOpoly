@@ -745,12 +745,7 @@ export default function GameRoom() {
     : null;
 
   return (
-    <div 
-      className="min-h-screen relative overflow-hidden"
-      style={{
-        background: 'linear-gradient(135deg, #0a0e1a 0%, #1a1f2e 100%)',
-      }}
-    >
+    <div className="game-container">
       <Toaster 
         position="top-right"
         toastOptions={{
@@ -824,23 +819,23 @@ export default function GameRoom() {
         </motion.div>
       </div>
 
-      {/* Main Game Area */}
-      <div className="pt-24 pb-4">
-        <div className="container mx-auto max-w-7xl px-4">
+      {/* Main Game Area - YC Demo Layout */}
+      <div className="pt-20 pb-2 h-[calc(100vh-5rem)] overflow-hidden">
+        <div className="container mx-auto max-w-[1800px] px-6 h-full">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.5 }}
-            className="grid grid-cols-1 lg:grid-cols-4 gap-4"
+            className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full"
           >
-            {/* Board - 75% */}
+            {/* Board - Center Focus 70% */}
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.6 }}
-              className="lg:col-span-3"
+              className="lg:col-span-8 flex items-center justify-center"
             >
-              <div className="relative">
+              <div className="relative w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-900/50 via-slate-800/50 to-slate-900/50 rounded-3xl border-2 border-cyan-400/30 shadow-2xl shadow-cyan-500/20 backdrop-blur-sm p-4">
                 <CameraController enableParallax={true} enableShake={true}>
                   <IsometricView>
                     <IsometricToggle />
@@ -910,9 +905,15 @@ export default function GameRoom() {
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.6, delay: 0.2 }}
-              className="lg:col-span-1 space-y-4"
+              className="lg:col-span-4 space-y-4 overflow-y-auto"
+              style={{ maxHeight: 'calc(100vh - 6rem)' }}
             >
-              <div className="space-y-4">
+              {/* Player Cards - Premium Design */}
+              <div className="space-y-3">
+                <div className="text-xs font-bold text-cyan-400 uppercase tracking-wider mb-2 flex items-center gap-2 px-1">
+                  <span className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse"></span>
+                  Players ({gameState.players.length})
+                </div>
                 {gameState.players.map((player, index) => {
                   const playerProperties = gameState.boardState
                     .filter((p: any) => p.ownerId === player.id)
@@ -938,7 +939,11 @@ export default function GameRoom() {
                 })}
               </div>
               
-              <div className="h-64">
+              <div className="flex-1 min-h-[300px]">
+                <div className="text-xs font-bold text-purple-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                  <span className="w-2 h-2 bg-purple-400 rounded-full animate-pulse"></span>
+                  Live Activity Feed
+                </div>
                 <EnhancedLiveFeed 
                   events={gameEvents.map(e => {
                     const player = gameState.players.find((p: any) => p.id === e.player || p.name === e.player);
@@ -958,17 +963,6 @@ export default function GameRoom() {
         </div>
       </div>
 
-      {/* Dice Roller - Show when it's your turn and not in a specific action state */}
-      {isMyTurn && (!actionType || actionType === 'awaiting-action') && (
-        <div className="fixed bottom-8 right-8 z-20">
-          <Enhanced3DDice onRoll={handleRollDice} disabled={!hasEnoughPlayers} />
-          {!hasEnoughPlayers && (
-            <div className="mt-3 bg-yellow-500/20 border border-yellow-400 text-yellow-200 text-sm font-mono px-4 py-2 rounded-lg">
-              Waiting for another player. Share room code <span className="font-semibold">{gameState.roomCode}</span>.
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Particle Effects */}
       <DiceParticles trigger={effects.diceParticles} />

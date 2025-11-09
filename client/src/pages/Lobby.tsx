@@ -4,6 +4,7 @@ import { User, onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import axios from 'axios';
 import Auth from '../components/Auth';
+// import { LoadingOverlay } from '../components/LoadingSpinner'; // Available if needed
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 

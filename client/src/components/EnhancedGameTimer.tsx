@@ -72,184 +72,48 @@ export default function EnhancedGameTimer({
   const progress = (timeRemaining / duration) * 100;
 
   return (
-    <motion.div
-      className="relative"
-      animate={isUrgent ? { scale: [1, 1.05, 1] } : {}}
-      transition={isUrgent ? { duration: 0.5, repeat: Infinity } : {}}
-    >
-      {/* Glassmorphic container */}
-      <div
-        className="relative px-8 py-6 rounded-2xl"
-        style={{
-          background: 'rgba(15, 25, 45, 0.7)',
-          backdropFilter: 'blur(10px) saturate(180%)',
-          border: `2px solid ${getColor()}40`,
-          boxShadow: `0 0 30px ${getColor()}30, inset 0 1px 0 rgba(255, 255, 255, 0.1)`,
-        }}
-      >
-        {/* Urgent warning pulse */}
-        {isUrgent && (
-          <motion.div
-            className="absolute inset-0 rounded-2xl"
-            style={{
-              background: `radial-gradient(circle at center, ${getColor()}40, transparent)`,
-              filter: 'blur(20px)',
-            }}
-            animate={{
-              opacity: [0.3, 0.6, 0.3],
-            }}
-            transition={{
-              duration: 0.5,
-              repeat: Infinity,
-            }}
+    <div className="bg-gradient-to-br from-gray-800 to-gray-900 p-6 rounded-2xl border-2 border-cyan-500 shadow-lg shadow-cyan-500/20">
+      <div className="flex items-center gap-2 mb-2">
+        <Clock className="w-4 h-4 text-cyan-400" />
+        <span className="text-xs text-gray-400 uppercase tracking-wider font-mono">Turn Timer</span>
+      </div>
+      
+      <div className="text-4xl font-bold text-cyan-400 mb-2 font-mono">{formatTime(timeRemaining)}</div>
+      
+      {/* Circular Progress */}
+      <div className="relative w-24 h-24 mx-auto">
+        <svg className="w-full h-full transform -rotate-90">
+          <circle
+            cx="48"
+            cy="48"
+            r="40"
+            stroke="currentColor"
+            strokeWidth="8"
+            fill="none"
+            className="text-gray-700"
           />
-        )}
-
-        {/* Header */}
-        <div className="flex items-center gap-3 mb-4">
-          <motion.div
-            animate={isUrgent ? {
-              rotate: [0, -10, 10, 0],
-            } : {}}
-            transition={{ duration: 0.5, repeat: isUrgent ? Infinity : 0 }}
-          >
-            {isUrgent ? (
-              <AlertCircle className="text-red-400" size={24} />
-            ) : (
-              <Clock className="text-white/60" size={24} />
-            )}
-          </motion.div>
-          <span className="text-white/60 font-mono text-sm uppercase tracking-wider">
-            {isUrgent ? 'Time Running Out!' : 'Turn Timer'}
-          </span>
-        </div>
-
-        {/* Time display */}
-        <motion.div
-          className="text-center mb-4"
-          animate={isUrgent ? {
-            x: [-2, 2, -2],
-          } : {}}
-          transition={{ duration: 0.1, repeat: isUrgent ? Infinity : 0 }}
-        >
-          <motion.div
-            className={`text-5xl font-bold font-mono bg-gradient-to-r ${getGradient()} bg-clip-text text-transparent`}
-            style={{
-              filter: isCritical ? `drop-shadow(0 4px 16px ${getColor()}80)` : `drop-shadow(0 2px 8px ${getColor()}50)`,
-            }}
-            animate={isCritical ? {
-              scale: [1, 1.1, 1],
-            } : timeRemaining === duration ? {
-              scale: [0.8, 1],
-            } : {}}
-            transition={{
-              duration: isCritical ? 0.5 : 0.3,
-              repeat: isCritical ? Infinity : 0,
-            }}
-          >
-            {formatTime(timeRemaining)}
-          </motion.div>
-          {isWarning && (
-            <motion.div
-              className="text-xs text-yellow-400 mt-1"
-              animate={{ opacity: [0.4, 1, 0.4] }}
-              transition={{ duration: 1, repeat: Infinity }}
-            >
-              Warning
-            </motion.div>
-          )}
-        </motion.div>
-
-        {/* Enhanced Circular progress ring */}
-        <div className="relative w-40 h-40 mx-auto">
-          {/* Glass-morphism background glow */}
-          <motion.div
-            className="absolute inset-0 rounded-full"
-            style={{
-              background: `radial-gradient(circle at 50% 50%, ${getColor()}20 0%, transparent 70%)`,
-              filter: 'blur(20px)',
-            }}
-            animate={{
-              opacity: isUrgent ? [0.3, 0.6, 0.3] : 0.2,
-            }}
-            transition={{
-              duration: 0.5,
-              repeat: isUrgent ? Infinity : 0,
-            }}
+          <motion.circle
+            cx="48"
+            cy="48"
+            r="40"
+            stroke="currentColor"
+            strokeWidth="8"
+            fill="none"
+            strokeDasharray={`${2 * Math.PI * 40}`}
+            initial={{ pathLength: 1 }}
+            animate={{ pathLength: progress / 100 }}
+            transition={{ duration: 0.5, ease: 'linear' }}
+            className="text-cyan-400"
           />
-          
-          <svg className="absolute inset-0 transform -rotate-90 w-full h-full">
-            {/* Background circle */}
-            <circle
-              cx="80"
-              cy="80"
-              r="72"
-              fill="none"
-              stroke="rgba(255,255,255,0.1)"
-              strokeWidth="8"
-            />
-            {/* Animated progress circle */}
-            <motion.circle
-              cx="80"
-              cy="80"
-              r="72"
-              fill="none"
-              stroke={getColor()}
-              strokeWidth="8"
-              strokeLinecap="round"
-              strokeDasharray={`${2 * Math.PI * 72}`}
-              initial={{ pathLength: 1 }}
-              animate={{ pathLength: progress / 100 }}
-              transition={{ duration: 0.5, ease: 'linear' }}
-              style={{
-                filter: `drop-shadow(0 0 10px ${getColor()})`,
-              }}
-            />
-          </svg>
-
-          {/* Center content */}
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="text-center">
-              <motion.div
-                className={`text-2xl font-bold font-mono ${isUrgent ? 'text-red-400' : 'text-white'}`}
-                animate={isCritical ? {
-                  scale: [1, 1.1, 1],
-                } : {}}
-                transition={{
-                  duration: 0.5,
-                  repeat: isCritical ? Infinity : 0,
-                }}
-              >
-                {Math.round(progress)}%
-              </motion.div>
-              <div className={`text-xs mt-1 ${isUrgent ? 'text-red-300' : 'text-white/60'}`}>
-                remaining
-              </div>
-            </div>
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="text-center">
+            <div className="text-2xl font-bold text-white font-mono">{Math.round(progress)}%</div>
+            <div className="text-xs text-gray-400">remaining</div>
           </div>
         </div>
-
-        {/* Warning messages */}
-        <AnimatePresence>
-          {isUrgent && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="mt-4 text-center"
-            >
-              <motion.div
-                className="text-red-400 font-bold font-mono text-sm"
-                animate={{ opacity: [0.5, 1, 0.5] }}
-                transition={{ duration: 0.5, repeat: Infinity }}
-              >
-                ⚠️ HURRY UP! ⚠️
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </div>
-    </motion.div>
+    </div>
   );
 }
 

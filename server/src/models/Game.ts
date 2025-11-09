@@ -10,7 +10,7 @@ export interface IProperty {
   rentWithHotel: number;
   houseCost: number;
   color: string;
-  category: 'arrays' | 'strings' | 'dp' | 'graphs' | 'trees' | 'sql' | 'system-design';
+  category: string; // Allow any category string
   ownerId?: string;
   houses: number; // 0-4 (4 = hotel)
   isRailroad?: boolean;
