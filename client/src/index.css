@@ -1,0 +1,404 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
+@import './styles/game.css';
+@import './styles/yc-ready.css';
+@import './styles/laptop-optimized.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* CODEOPOLY v3.0 Design System - YC Ready */
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: dark;
+  
+  /* Color Palette - Premium Tech Theme */
+  --code-blue: #00D1FF;
+  --code-purple: #7B61FF;
+  --code-green: #00FFA3;
+  --code-orange: #FF6B00;
+  --code-red: #FF3B5F;
+  --bg-dark: #0a0e1a;
+  --bg-card: #1a1f2e;
+  --card-bg: #1E293B;
+  --text-primary: #F8FAFC;
+  --text-muted: #94A3B8;
+  --border-subtle: #334155;
+  --glow-cyan: rgba(0, 209, 255, 0.5);
+  --glow-purple: rgba(123, 97, 255, 0.5);
+  
+  /* Typography Scale */
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-base: 16px;
+  --text-lg: 20px;
+  --text-xl: 24px;
+  --text-2xl: 32px;
+  
+  /* Spacing - 8px grid */
+  --space-1: 8px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --space-4: 32px;
+  
+  /* Border Radius */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #0a0e1a 0%, #1a1f2e 50%, #0a0e1a 100%);
+  color: var(--text-primary);
+  font-family: 'Inter', system-ui, sans-serif;
+  overflow: hidden;
+}
+
+#root {
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+/* Smooth scrolling */
+* {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar - Modern & Sleek */
+.overflow-y-auto::-webkit-scrollbar {
+  width: 8px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-track {
+  background: rgba(31, 41, 55, 0.3);
+  border-radius: 4px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #00D1FF 0%, #7B61FF 100%);
+  border-radius: 4px;
+  transition: all 0.3s;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #00FFA3 0%, #00D1FF 100%);
+}
+
+/* Global scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0e1a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #00D1FF 0%, #7B61FF 100%);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #00FFA3 0%, #00D1FF 100%);
+}
+
+/* Premium Glow Effects */
+.glow-cyan {
+  box-shadow: 0 0 20px var(--glow-cyan), 0 0 40px var(--glow-cyan);
+}
+
+.glow-yellow {
+  box-shadow: 0 0 20px rgba(251, 191, 36, 0.5), 0 0 40px rgba(251, 191, 36, 0.3);
+}
+
+.glow-purple {
+  box-shadow: 0 0 20px var(--glow-purple), 0 0 40px var(--glow-purple);
+}
+
+/* CodeOpoly Board - YC Demo Ready - MacBook Air Optimized */
+.codeopoly-board-container {
+  position: relative;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+  border-radius: 1.5vmin;
+  box-shadow: 
+    0 0 60px rgba(0, 209, 255, 0.4),
+    inset 0 0 60px rgba(0, 209, 255, 0.1),
+    0 0 120px rgba(0, 209, 255, 0.2);
+  padding-bottom: 0;
+  margin-bottom: 0;
+  isolation: isolate;
+  width: min(calc(100vh - 8rem), calc(100vw - 24rem), 85vmin) !important;
+  height: min(calc(100vh - 8rem), calc(100vw - 24rem), 85vmin) !important;
+  aspect-ratio: 1 / 1 !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  margin: 0 auto !important;
+  padding: 1.5vmin !important;
+  box-sizing: border-box !important;
+}
+
+/* MacBook Air 13" Optimization (1440x900) */
+@media (min-width: 1280px) and (max-width: 1440px) and (max-height: 900px) {
+  .codeopoly-board-container {
+    width: min(calc(100vh - 6rem), calc(100vw - 20rem), 75vmin) !important;
+    height: min(calc(100vh - 6rem), calc(100vw - 20rem), 75vmin) !important;
+    padding: 1vmin !important;
+  }
+}
+
+/* Small Laptop Optimization (1024px - 1280px) */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .codeopoly-board-container {
+    width: min(calc(100vh - 5rem), calc(100vw - 18rem), 70vmin) !important;
+    height: min(calc(100vh - 5rem), calc(100vw - 18rem), 70vmin) !important;
+    padding: 0.8vmin !important;
+  }
+}
+
+/* Ensure bottom row is visible */
+.codeopoly-board-grid {
+  position: relative;
+  padding-bottom: 0;
+  margin-bottom: 0;
+}
+
+.codeopoly-board-grid > div:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+/* Premium Neon border effects */
+.codeopoly-board-grid > div > div {
+  border: 2px solid rgba(0, 209, 255, 0.3);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.codeopoly-board-grid > div > div:hover {
+  border-color: rgba(0, 209, 255, 0.9);
+  box-shadow: 
+    0 0 25px rgba(0, 209, 255, 0.7),
+    0 0 50px rgba(0, 209, 255, 0.5),
+    inset 0 0 25px rgba(0, 209, 255, 0.2);
+  transform: scale(1.02);
+  z-index: 10;
+}
+
+/* Responsive property tile sizing */
+.codeopoly-board-grid > div {
+  width: 100% !important;
+  height: 100% !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.codeopoly-board-grid > div > motion.div {
+  transform-origin: center;
+  width: 100%;
+  height: 100%;
+}
+
+/* Ensure all property cards fill their grid cells */
+.codeopoly-board-grid > div > * {
+  width: 100% !important;
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* Ensure all tiles are visible */
+.codeopoly-board-container * {
+  box-sizing: border-box;
+}
+
+/* Premium Neon glow animation */
+@keyframes neon-pulse {
+  0%, 100% {
+    box-shadow: 
+      0 0 10px rgba(0, 209, 255, 0.5),
+      0 0 20px rgba(0, 209, 255, 0.3),
+      0 0 30px rgba(0, 209, 255, 0.2);
+  }
+  50% {
+    box-shadow: 
+      0 0 20px rgba(0, 209, 255, 0.8),
+      0 0 40px rgba(0, 209, 255, 0.6),
+      0 0 60px rgba(0, 209, 255, 0.4);
+  }
+}
+
+.codeopoly-board-grid > div > div:active {
+  animation: neon-pulse 0.3s ease;
+}
+
+/* Responsive Design Breakpoints - YC Demo Optimized */
+@media (max-width: 1024px) {
+  .codeopoly-board-container {
+    width: min(calc(100vh - 4rem), calc(100vw - 8rem), 88vmin) !important;
+    height: min(calc(100vh - 4rem), calc(100vw - 8rem), 88vmin) !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .codeopoly-board-container {
+    width: min(92vmin, 92vw) !important;
+    height: min(92vmin, 92vw) !important;
+    padding: 1vmin !important;
+  }
+  
+  /* Stack layout for mobile */
+  .game-layout-mobile {
+    flex-direction: column !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .codeopoly-board-container {
+    width: 95vmin !important;
+    height: 95vmin !important;
+    min-height: 400px !important;
+    padding: 0.8vmin !important;
+  }
+}
+
+/* Accessibility - Keyboard Navigation */
+*:focus-visible {
+  outline: 2px solid var(--code-blue);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Screen Reader Only */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Premium Card Styles */
+.premium-card {
+  background: linear-gradient(135deg, rgba(26, 31, 46, 0.95), rgba(30, 41, 59, 0.95));
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(0, 209, 255, 0.2);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  transition: all 0.3s ease;
+}
+
+.premium-card:hover {
+  border-color: rgba(0, 209, 255, 0.5);
+  box-shadow: 0 8px 32px rgba(0, 209, 255, 0.3);
+  transform: translateY(-2px);
+}
+
+/* Button Styles - YC Ready */
+.btn-primary {
+  background: linear-gradient(135deg, #00D1FF 0%, #7B61FF 100%);
+  color: white;
+  font-weight: 600;
+  padding: 12px 24px;
+  border-radius: var(--radius-md);
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 16px rgba(0, 209, 255, 0.4);
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 209, 255, 0.6);
+}
+
+.btn-secondary {
+  background: rgba(30, 41, 59, 0.8);
+  color: var(--text-primary);
+  font-weight: 600;
+  padding: 12px 24px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(0, 209, 255, 0.3);
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-secondary:hover {
+  background: rgba(30, 41, 59, 1);
+  border-color: rgba(0, 209, 255, 0.6);
+  transform: translateY(-2px);
+}
+
+/* Text Gradients */
+.text-gradient-cyan {
+  background: linear-gradient(135deg, #00D1FF 0%, #00FFA3 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.text-gradient-purple {
+  background: linear-gradient(135deg, #7B61FF 0%, #FF6B00 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Loading Animation */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.loading-shimmer {
+  animation: shimmer 2s infinite linear;
+  background: linear-gradient(90deg, transparent, rgba(0, 209, 255, 0.2), transparent);
+  background-size: 1000px 100%;
+}
+
+/* Improve text readability */
+@media (max-width: 640px) {
+  body {
+    font-size: 14px;
+  }
+  
+  h1 {
+    font-size: 2rem !important;
+  }
+  
+  h2 {
+    font-size: 1.5rem !important;
+  }
+}
+
+/* Glass morphism effect */
+.glass {
+  background: rgba(26, 31, 46, 0.7);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Prevent any scrolling on main container */
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+#root {
+  height: 100%;
+  overflow: hidden;
+}
