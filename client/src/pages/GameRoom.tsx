@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { io, Socket } from 'socket.io-client';
 import { motion } from 'framer-motion';
@@ -155,13 +155,12 @@ export default function GameRoom() {
       return;
     }
 
-    console.log('Connecting to socket:', SOCKET_URL);
     const newSocket = io(SOCKET_URL);
     setSocket(newSocket);
 
     // Connection error handling
     newSocket.on('connect', () => {
-      console.log('Socket connected:', newSocket.id);
+      // Socket connected successfully
     });
 
     newSocket.on('connect_error', (error) => {
@@ -170,17 +169,15 @@ export default function GameRoom() {
     });
 
     // Join game
-    console.log('Joining game:', { gameId, playerId });
     newSocket.emit('join-game', { gameId, playerId });
 
     // Listen for game state updates
     newSocket.on('game-state', (state: GameState) => {
-      console.log('Received game state:', state);
       if (!state || !state.boardState || state.boardState.length === 0) {
-        console.error('Invalid game state received:', state);
         return;
       }
 
+      // Only update if state actually changed (prevent unnecessary re-renders)
       const normalizedState: GameState = {
         ...state,
         startTime: state.startTime
@@ -188,7 +185,29 @@ export default function GameRoom() {
           : gameState?.startTime || Date.now(),
       };
 
-      setGameState(normalizedState);
+      // Use functional update to prevent stale closures
+      setGameState(prevState => {
+        // Skip update if state hasn't meaningfully changed (optimize performance)
+        if (prevState && 
+            prevState.currentTurn === normalizedState.currentTurn &&
+            prevState.turnNumber === normalizedState.turnNumber &&
+            prevState.status === normalizedState.status &&
+            prevState.players.length === normalizedState.players.length) {
+          // Quick check: compare player positions and money (most frequently changing)
+          const playersChanged = prevState.players.some((p: any, i: number) => {
+            const newPlayer = normalizedState.players[i];
+            return !newPlayer || 
+                   p.position !== newPlayer.position || 
+                   p.money !== newPlayer.money ||
+                   p.id !== newPlayer.id;
+          });
+          if (!playersChanged) {
+            return prevState; // No meaningful changes, skip update
+          }
+        }
+        return normalizedState;
+      });
+      
       playersRef.current = normalizedState.players;
 
       if (!hasLoggedStartRef.current) {
@@ -220,7 +239,6 @@ export default function GameRoom() {
 
     // Listen for when other players join
     newSocket.on('player-joined', (data: any) => {
-      console.log('Player joined:', data);
       const { playerName, playerAvatar } = data;
       
       // Show notification
@@ -679,12 +697,14 @@ export default function GameRoom() {
     });
   };
 
-  const calculateNetWorth = (player: any) => {
-    const propertyValue = gameState?.boardState
+  // Memoize net worth calculation to prevent expensive recalculations
+  const calculateNetWorth = useCallback((player: any) => {
+    if (!gameState?.boardState || !player) return player?.money || 0;
+    const propertyValue = gameState.boardState
       .filter(p => p.ownerId === player.id)
-      .reduce((sum, p) => sum + p.price + (p.houses * p.houseCost || 0), 0) || 0;
+      .reduce((sum, p) => sum + p.price + (p.houses * (p.houseCost || 0)), 0);
     return player.money + propertyValue;
-  };
+  }, [gameState?.boardState]);
 
   useEffect(() => {
     if (!gameState) return;
@@ -788,12 +808,24 @@ export default function GameRoom() {
         : landedProperty.rentWithHouse?.[landedProperty.houses - 1] || landedProperty.rent)
     : 0;
 
-  // Calculate winner for game over
-  const winner = gameState.status === 'finished' 
-    ? gameState.players.reduce((prev, curr) => 
-        calculateNetWorth(curr) > calculateNetWorth(prev) ? curr : prev
-      )
-    : null;
+  // Memoize winner calculation to prevent expensive recalculations
+  const winner = useMemo(() => {
+    if (!gameState || gameState.status !== 'finished' || !gameState.players.length) {
+      return null;
+    }
+    return gameState.players.reduce((prev, curr) => 
+      calculateNetWorth(curr) > calculateNetWorth(prev) ? curr : prev
+    );
+  }, [gameState?.status, gameState?.players, calculateNetWorth]);
+
+  // Memoize players with net worth to prevent recalculation on every render
+  const playersWithNetWorth = useMemo(() => {
+    if (!gameState?.players) return [];
+    return gameState.players.map((p: any) => ({
+      ...p,
+      netWorth: calculateNetWorth(p),
+    }));
+  }, [gameState?.players, calculateNetWorth]);
 
   return (
     <div className="game-container">
@@ -1128,14 +1160,11 @@ export default function GameRoom() {
       {/* Game Over Modal */}
       {showGameOver && winner && (
         <GameOverModal
-          players={gameState.players.map((p: any) => ({
-            ...p,
-            netWorth: calculateNetWorth(p),
-          }))}
-          winner={{
+          players={playersWithNetWorth}
+          winner={winner ? {
             ...winner,
             netWorth: calculateNetWorth(winner),
-          }}
+          } : undefined}
           onClose={() => navigate('/')}
         />
       )}
