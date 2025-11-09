@@ -218,6 +218,26 @@ export default function GameRoom() {
       newSocket.emit('get-game-state', { gameId });
     });
 
+    // Listen for when other players join
+    newSocket.on('player-joined', (data: any) => {
+      console.log('Player joined:', data);
+      const { playerName, playerAvatar } = data;
+      
+      // Show notification
+      showNotification('success', 'Player Joined!', `${playerName} joined the game`, 3000);
+      
+      // Add event to log
+      addEvent({
+        type: 'info',
+        message: `🎮 ${playerName} joined the game`,
+        timestamp: Date.now(),
+        player: playerName,
+        playerAvatar: playerAvatar,
+      });
+      
+      // Game state will be automatically updated via the 'game-state' event
+    });
+
     // Also request game state immediately in case we missed the joined-game event
     setTimeout(() => {
       newSocket.emit('get-game-state', { gameId });
@@ -958,10 +978,18 @@ export default function GameRoom() {
         </div>
       </div>
 
-      {/* Dice Roller - Show when it's your turn and not in a specific action state */}
-      {isMyTurn && (!actionType || actionType === 'awaiting-action') && (
+      {/* Dice Roller - Show to all players, but only enable for current player */}
+      {(!actionType || actionType === 'awaiting-action') && (
         <div className="fixed bottom-8 right-8 z-20">
-          <Enhanced3DDice onRoll={handleRollDice} disabled={!hasEnoughPlayers} />
+          <Enhanced3DDice 
+            onRoll={handleRollDice} 
+            disabled={!isMyTurn || !hasEnoughPlayers} 
+          />
+          {!isMyTurn && hasEnoughPlayers && (
+            <div className="mt-3 bg-blue-500/20 border border-blue-400 text-blue-200 text-sm font-mono px-4 py-2 rounded-lg text-center">
+              {getPlayerNameById(gameState.players, gameState.currentTurn)}'s turn
+            </div>
+          )}
           {!hasEnoughPlayers && (
             <div className="mt-3 bg-yellow-500/20 border border-yellow-400 text-yellow-200 text-sm font-mono px-4 py-2 rounded-lg">
               Waiting for another player. Share room code <span className="font-semibold">{gameState.roomCode}</span>.

@@ -10,16 +10,23 @@ function useMongoDB() {
   return mongoose.connection.readyState === 1;
 }
 
+function isValidObjectId(id: string): boolean {
+  return mongoose.Types.ObjectId.isValid(id) && /^[0-9a-fA-F]{24}$/.test(id);
+}
+
+async function getGameById(gameId: string) {
+  if (useMongoDB() && isValidObjectId(gameId)) {
+    return await Game.findById(gameId);
+  } else {
+    return findGameById(gameId);
+  }
+}
+
 export function setupSocketHandlers(io: Server, socket: Socket) {
   // Join game room
   socket.on('join-game', async ({ gameId, playerId }) => {
     try {
-      let game;
-      if (useMongoDB()) {
-        game = await Game.findById(gameId);
-      } else {
-        game = findGameById(gameId);
-      }
+      const game = await getGameById(gameId);
       
       if (!game) {
         socket.emit('error', { message: 'Game not found' });
@@ -40,11 +47,23 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
       socket.join(gameId);
       socket.emit('joined-game', { gameId, playerId });
       
-      // Notify other players
-      io.to(gameId).emit('player-joined', {
+      // Send current game state to the joining player
+      const gameState = {
+        ...game.toObject ? game.toObject() : game,
+        boardState: game.boardState || [],
+        players: game.players || [],
+      };
+      socket.emit('game-state', gameState);
+      
+      // Notify other players and broadcast updated game state to all
+      socket.to(gameId).emit('player-joined', {
         playerId,
         playerName: player?.name,
+        playerAvatar: player?.avatar,
       });
+      
+      // Broadcast updated game state to all players in the room
+      io.to(gameId).emit('game-state', gameState);
     } catch (error) {
       console.error('Error joining game:', error);
       socket.emit('error', { message: 'Failed to join game' });
@@ -54,12 +73,7 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
   // Roll dice
   socket.on('roll-dice', async ({ gameId, playerId }) => {
     try {
-      let game;
-      if (useMongoDB()) {
-        game = await Game.findById(gameId);
-      } else {
-        game = findGameById(gameId);
-      }
+      const game = await getGameById(gameId);
       
       if (!game || game.currentTurn !== playerId) {
         socket.emit('error', { message: 'Not your turn' });
@@ -136,12 +150,7 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
   // Buy property
   socket.on('buy-property', async ({ gameId, playerId, propertyId, code, language }) => {
     try {
-      let game;
-      if (useMongoDB()) {
-        game = await Game.findById(gameId);
-      } else {
-        game = findGameById(gameId);
-      }
+      const game = await getGameById(gameId);
       
       if (!game) {
         socket.emit('error', { message: 'Game not found' });
@@ -195,12 +204,7 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
   // Challenge to code duel
   socket.on('challenge-duel', async ({ gameId, challengerId, defenderId, propertyId }) => {
     try {
-      let game;
-      if (useMongoDB()) {
-        game = await Game.findById(gameId);
-      } else {
-        game = findGameById(gameId);
-      }
+      const game = await getGameById(gameId);
       
       if (!game) {
         socket.emit('error', { message: 'Game not found' });
@@ -260,12 +264,7 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
   // Submit code in duel
   socket.on('submit-duel-code', async ({ gameId, playerId, code, language }) => {
     try {
-      let game;
-      if (useMongoDB()) {
-        game = await Game.findById(gameId);
-      } else {
-        game = findGameById(gameId);
-      }
+      const game = await getGameById(gameId);
       
       if (!game || !game.activeDuel) {
         socket.emit('error', { message: 'No active duel' });
@@ -334,12 +333,7 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
   // End turn
   socket.on('end-turn', async ({ gameId, playerId }) => {
     try {
-      let game;
-      if (useMongoDB()) {
-        game = await Game.findById(gameId);
-      } else {
-        game = findGameById(gameId);
-      }
+      const game = await getGameById(gameId);
       
       if (!game || game.currentTurn !== playerId) {
         socket.emit('error', { message: 'Not your turn' });
@@ -370,12 +364,7 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
   // Pay rent
   socket.on('pay-rent', async ({ gameId, playerId, propertyId }) => {
     try {
-      let game;
-      if (useMongoDB()) {
-        game = await Game.findById(gameId);
-      } else {
-        game = findGameById(gameId);
-      }
+      const game = await getGameById(gameId);
       
       if (!game) {
         socket.emit('error', { message: 'Game not found' });
@@ -416,12 +405,7 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
   // Upgrade property
   socket.on('upgrade-property', async ({ gameId, playerId, propertyId }) => {
     try {
-      let game;
-      if (useMongoDB()) {
-        game = await Game.findById(gameId);
-      } else {
-        game = findGameById(gameId);
-      }
+      const game = await getGameById(gameId);
       
       if (!game) {
         socket.emit('error', { message: 'Game not found' });
@@ -470,12 +454,7 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
   // Game time up
   socket.on('game-time-up', async ({ gameId }) => {
     try {
-      let game;
-      if (useMongoDB()) {
-        game = await Game.findById(gameId);
-      } else {
-        game = findGameById(gameId);
-      }
+      const game = await getGameById(gameId);
       
       if (!game) return;
 
@@ -496,12 +475,7 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
   // Get game state
   socket.on('get-game-state', async ({ gameId }) => {
     try {
-      let game;
-      if (useMongoDB()) {
-        game = await Game.findById(gameId);
-      } else {
-        game = findGameById(gameId);
-      }
+      const game = await getGameById(gameId);
       
       if (!game) {
         socket.emit('error', { message: 'Game not found' });
