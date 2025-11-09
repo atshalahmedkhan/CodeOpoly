@@ -244,12 +244,15 @@ export default function GameRoom() {
     }, 100);
 
     newSocket.on('dice-rolled', (data: any) => {
-      const rollerId = data.playerId || playerId;
+      const rollerId = data.playerId;
       const rollerName = getPlayerNameById(playersRef.current, rollerId);
 
-      setDiceResult({ dice1: data.dice[0], dice2: data.dice[1], total: data.total });
-      setActionType('dice-rolling');
-      setLandedPosition(data.newPosition);
+      // Only update dice result and action type if it's the current player
+      if (rollerId === playerId) {
+        setDiceResult({ dice1: data.dice[0], dice2: data.dice[1], total: data.total });
+        setActionType('dice-rolling');
+        setLandedPosition(data.newPosition);
+      }
       
       // Trigger particle effects
       if (rollerId === playerId) {
@@ -274,14 +277,19 @@ export default function GameRoom() {
     newSocket.on('landed-on-space', (data: any) => {
       if (!data.property) return;
 
+      const landedPlayerId = data.playerId;
       const property = data.property;
-      setLandedProperty(property);
-      setLandedPosition(property.position);
+      
+      // Only update state for the player who actually landed
+      if (landedPlayerId === playerId) {
+        setLandedProperty(property);
+        setLandedPosition(property.position);
+      }
 
-      const activePlayerName = getPlayerNameById(playersRef.current, playerId);
+      const activePlayerName = getPlayerNameById(playersRef.current, landedPlayerId);
       const propertyName = describeProperty(property);
 
-      const activePlayer = playersRef.current.find((p: any) => p.id === playerId);
+      const activePlayer = playersRef.current.find((p: any) => p.id === landedPlayerId);
       addEvent({
         type: property.isSpecial ? 'special' : 'land',
         message: `${activePlayerName} landed on ${propertyName}`,
@@ -290,6 +298,9 @@ export default function GameRoom() {
         playerAvatar: activePlayer?.avatar,
         property: propertyName,
       });
+
+      // Only process actions for the player who landed
+      if (landedPlayerId !== playerId) return;
 
       if (property.isSpecial) {
         setActionType('landed-special');

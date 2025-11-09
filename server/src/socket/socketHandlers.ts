@@ -134,7 +134,9 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
             property: property.name,
           });
         } else {
-          socket.emit('landed-on-space', {
+          // Broadcast to all players so they can see what space was landed on
+          io.to(gameId).emit('landed-on-space', {
+            playerId,
             property,
             canBuy: !property.ownerId && property.price > 0,
             mustPayRent: property.ownerId && property.ownerId !== playerId,
