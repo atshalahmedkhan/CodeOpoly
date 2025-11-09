@@ -1,4 +1,4 @@
-import { Problem, TestCase } from '@/types/game';
+import { Problem, TestCase, ProblemCategory, ProblemDifficulty } from '@/types/game';
 
 export const problems: Problem[] = [
   {
