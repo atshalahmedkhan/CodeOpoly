@@ -1,0 +1,342 @@
+/* ============================================
+   CODEOPOLY - LAPTOP OPTIMIZED LAYOUT
+   Professional Design by 20-Year Veteran
+   ============================================ */
+
+/* GLOBAL RESET - No Overflow, Clean Layout */
+html, body, #root {
+  height: 100vh !important;
+  width: 100vw !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  box-sizing: border-box !important;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+/* MAIN GAME CONTAINER - Full Height, No Scroll */
+.game-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background: linear-gradient(135deg, #0a0e1a 0%, #141824 25%, #1a1f2e 50%, #141824 75%, #0a0e1a 100%);
+}
+
+/* COMPACT HEADER - Minimal Height (50px) */
+.game-header-compact {
+  flex-shrink: 0;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1.5rem;
+  background: rgba(15, 23, 42, 0.7);
+  border-bottom: 1px solid rgba(6, 182, 212, 0.2);
+  backdrop-filter: blur(10px);
+  z-index: 100;
+}
+
+/* MAIN GAME AREA - 3 Column Grid Layout */
+.game-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 220px 1fr 260px;
+  gap: 1rem;
+  padding: 1rem;
+  overflow: hidden;
+  min-height: 0; /* Critical for nested scrolling */
+}
+
+/* LEFT SIDEBAR - Compact Players List */
+.sidebar-left {
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-right: 0.25rem;
+}
+
+/* CENTER BOARD - Perfect Fit, No Overflow */
+.board-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  min-height: 0;
+  position: relative;
+}
+
+/* RIGHT SIDEBAR - Dice & Live Feed */
+.sidebar-right {
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-left: 0.25rem;
+}
+
+/* BOARD CONTAINER - LAPTOP OPTIMIZED (Fits 1366x768 to 1920x1080) */
+.codeopoly-board-container {
+  position: relative;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+  border-radius: 12px;
+  box-shadow: 
+    0 0 30px rgba(6, 182, 212, 0.3),
+    inset 0 0 30px rgba(6, 182, 212, 0.08),
+    0 10px 40px rgba(0, 0, 0, 0.4);
+  border: 2px solid rgba(6, 182, 212, 0.25);
+  isolation: isolate;
+  
+  /* PERFECT FIT FOR LAPTOP SCREENS */
+  width: min(calc(100vh - 130px), calc(100vw - 550px), 700px) !important;
+  height: min(calc(100vh - 130px), calc(100vw - 550px), 700px) !important;
+  aspect-ratio: 1 / 1 !important;
+  margin: 0 auto !important;
+  padding: 1.2vmin !important;
+}
+
+/* CLEAN CARD STYLING - Minimal, Professional */
+.card-clean {
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(6, 182, 212, 0.15);
+  border-radius: 10px;
+  padding: 0.75rem;
+  backdrop-filter: blur(8px);
+  transition: all 0.2s ease;
+}
+
+.card-clean:hover {
+  border-color: rgba(6, 182, 212, 0.3);
+  background: rgba(15, 23, 42, 0.65);
+  transform: translateY(-1px);
+}
+
+/* COMPACT TEXT STYLES */
+.text-compact {
+  font-size: 0.75rem;
+  line-height: 1.3;
+  color: rgba(248, 250, 252, 0.8);
+}
+
+.text-compact-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: rgba(6, 182, 212, 0.9);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* MINIMAL SCROLLBAR - Clean & Unobtrusive */
+.sidebar-left::-webkit-scrollbar,
+.sidebar-right::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sidebar-left::-webkit-scrollbar-track,
+.sidebar-right::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-left::-webkit-scrollbar-thumb,
+.sidebar-right::-webkit-scrollbar-thumb {
+  background: rgba(6, 182, 212, 0.25);
+  border-radius: 2px;
+}
+
+.sidebar-left::-webkit-scrollbar-thumb:hover,
+.sidebar-right::-webkit-scrollbar-thumb:hover {
+  background: rgba(6, 182, 212, 0.4);
+}
+
+/* RESPONSIVE BREAKPOINTS */
+
+/* Large Laptops (1600px+) */
+@media (min-width: 1600px) {
+  .game-main {
+    grid-template-columns: 260px 1fr 300px;
+    gap: 1.25rem;
+    padding: 1.25rem;
+  }
+  
+  .codeopoly-board-container {
+    width: min(calc(100vh - 120px), calc(100vw - 600px), 800px) !important;
+    height: min(calc(100vh - 120px), calc(100vw - 600px), 800px) !important;
+  }
+}
+
+/* Standard Laptops (1366px - 1600px) */
+@media (min-width: 1366px) and (max-width: 1599px) {
+  .game-main {
+    grid-template-columns: 200px 1fr 240px;
+    gap: 0.875rem;
+    padding: 0.875rem;
+  }
+  
+  .codeopoly-board-container {
+    width: min(calc(100vh - 110px), calc(100vw - 480px), 650px) !important;
+    height: min(calc(100vh - 110px), calc(100vw - 480px), 650px) !important;
+  }
+}
+
+/* Small Laptops (1024px - 1365px) */
+@media (min-width: 1024px) and (max-width: 1365px) {
+  .game-main {
+    grid-template-columns: 180px 1fr 220px;
+    gap: 0.75rem;
+    padding: 0.75rem;
+  }
+  
+  .codeopoly-board-container {
+    width: min(calc(100vh - 100px), calc(100vw - 440px), 580px) !important;
+    height: min(calc(100vh - 100px), calc(100vw - 440px), 580px) !important;
+  }
+  
+  .game-header-compact {
+    height: 45px;
+    padding: 0 1rem;
+  }
+}
+
+/* Tablets (768px - 1023px) */
+@media (max-width: 1023px) {
+  .game-main {
+    grid-template-columns: 160px 1fr 200px;
+    gap: 0.5rem;
+    padding: 0.5rem;
+  }
+  
+  .codeopoly-board-container {
+    width: min(calc(100vh - 90px), calc(100vw - 380px), 500px) !important;
+    height: min(calc(100vh - 90px), calc(100vw - 380px), 500px) !important;
+  }
+  
+  .game-header-compact {
+    height: 45px;
+  }
+}
+
+/* Mobile (< 768px) */
+@media (max-width: 767px) {
+  .game-main {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto;
+    gap: 0.5rem;
+    padding: 0.5rem;
+  }
+  
+  .sidebar-left,
+  .sidebar-right {
+    max-height: 150px;
+  }
+  
+  .codeopoly-board-container {
+    width: min(calc(100vh - 250px), 95vw, 450px) !important;
+    height: min(calc(100vh - 250px), 95vw, 450px) !important;
+  }
+  
+  .game-header-compact {
+    height: 40px;
+    padding: 0 0.75rem;
+  }
+}
+
+/* PROPERTY CARDS - Better Readability */
+.codeopoly-board-grid > div {
+  width: 100% !important;
+  height: 100% !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* CLEAN BUTTON STYLES */
+.btn-clean {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(59, 130, 246, 0.2));
+  border: 1px solid rgba(6, 182, 212, 0.3);
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: rgba(6, 182, 212, 0.95);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-clean:hover {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.3), rgba(59, 130, 246, 0.3));
+  border-color: rgba(6, 182, 212, 0.5);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(6, 182, 212, 0.2);
+}
+
+.btn-clean:active {
+  transform: translateY(0);
+}
+
+/* BADGE STYLES */
+.badge-clean {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
+  background: rgba(6, 182, 212, 0.1);
+  border: 1px solid rgba(6, 182, 212, 0.25);
+  border-radius: 6px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: rgba(6, 182, 212, 0.9);
+}
+
+/* STATUS DOT */
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.status-dot.active {
+  background: #10B981;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+}
+
+.status-dot.waiting {
+  background: #FBBF24;
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.5);
+}
+
+/* SMOOTH ANIMATIONS */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* PERFORMANCE OPTIMIZATION */
+.board-center * {
+  will-change: auto;
+}
+
+/* Reduce motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
