@@ -426,8 +426,28 @@ export default function GameRoom() {
     });
 
     newSocket.on('turn-ended', (data: any) => {
+      const nextPlayerName = data.nextPlayerName || getPlayerNameById(playersRef.current, data.nextPlayerId);
+      
       setActionType(null);
       setDiceResult(null);
+      setLandedProperty(null);
+      setShowChallengeModal(false);
+      
+      // Add event to log
+      addEvent({
+        type: 'info',
+        message: `🔄 Turn switched to ${nextPlayerName}`,
+        timestamp: Date.now(),
+        player: nextPlayerName,
+      });
+      
+      // Show notification
+      if (data.nextPlayerId === playerId) {
+        showNotification('success', 'Your Turn!', `It's your turn to roll the dice`, 3000);
+      } else {
+        showNotification('info', 'Turn Changed', `${nextPlayerName}'s turn`, 2000);
+      }
+      
       newSocket.emit('get-game-state', { gameId });
     });
 
@@ -1067,6 +1087,10 @@ export default function GameRoom() {
             setCurrentProblem(null);
             setLandedProperty(null);
             setActionType(null);
+            // End turn when player skips buying property
+            if (socket && gameState) {
+              socket.emit('end-turn', { gameId: gameState._id, playerId });
+            }
           }}
           timeLimit={300}
         />
