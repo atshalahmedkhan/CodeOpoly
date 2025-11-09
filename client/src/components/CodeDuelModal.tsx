@@ -91,14 +91,21 @@ export default function CodeDuelModal({
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
+    const startTime = Date.now();
     try {
       const results = await executeCode(code, language, problem.testCases);
+      const endTime = Date.now();
+      const timeTaken = Math.floor((endTime - startTime) / 1000); // seconds
+      
       setTestResults(results);
       const passed = results.every(r => r.passed);
       
       if (passed) {
         setStatus('completed');
+        // Time-based scoring: <10s = full reward, otherwise scaled
+        const timeBonus = timeTaken < 10 ? 1.0 : Math.max(0.5, 1.0 - (timeTaken - 10) / 100);
         setAllTestsPassed(true);
+        // Notify parent with time taken for scoring
         onWin();
       } else {
         setStatus('failed');

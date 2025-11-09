@@ -67,7 +67,11 @@ router.post('/games/create', async (req, res) => {
     }
   } catch (error: any) {
     console.error('Error creating game:', error);
-    res.status(500).json({ error: error.message });
+    console.error('Error stack:', error.stack);
+    res.status(500).json({ 
+      error: error.message || 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 

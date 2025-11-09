@@ -10,6 +10,7 @@
   "dependencies": {
     "@monaco-editor/react": "^4.6.0",
     "axios": "^1.13.2",
+    "canvas-confetti": "^1.9.4",
     "firebase": "^10.14.1",
     "framer-motion": "^10.16.0",
     "lucide-react": "^0.294.0",

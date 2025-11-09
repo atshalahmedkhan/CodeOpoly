@@ -152,153 +152,90 @@ export default function Enhanced3DDice({ onRoll, disabled }: Enhanced3DDiceProps
     <>
       <DiceParticles trigger={showParticles} position={{ x: window.innerWidth / 2, y: 300 }} />
       
-      <div 
-        className="flex flex-col items-center gap-6 p-8 rounded-2xl relative"
+      <motion.button
+        onClick={rollDice}
+        disabled={disabled || isRolling}
+        whileHover={!disabled && !isRolling ? { scale: 1.08, boxShadow: "0 0 40px rgba(6, 182, 212, 0.6)" } : {}}
+        whileTap={!disabled && !isRolling ? { scale: 0.92 } : {}}
+        className="w-full bg-gradient-to-r from-cyan-500 via-blue-500 to-purple-500 hover:from-cyan-400 hover:via-blue-400 hover:to-purple-400 text-white py-5 rounded-2xl font-black text-xl transition-all transform shadow-2xl mb-6 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-3 relative overflow-hidden"
         style={{
-          background: 'rgba(15, 25, 45, 0.7)',
-          backdropFilter: 'blur(10px) saturate(180%)',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
-          boxShadow: '0 20px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
+          boxShadow: "0 10px 40px rgba(6, 182, 212, 0.4), inset 0 1px 2px rgba(255,255,255,0.3)"
         }}
       >
-        {/* Animated background glow */}
         <motion.div
-          className="absolute inset-0 rounded-2xl"
-          style={{
-            background: 'radial-gradient(circle at center, rgba(16, 185, 129, 0.2), transparent 70%)',
-          }}
-          animate={{
-            opacity: isRolling ? [0.2, 0.5, 0.2] : 0.2,
-          }}
-          transition={{
-            duration: 1,
-            repeat: isRolling ? Infinity : 0,
-          }}
+          className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
+          animate={{ x: ['-100%', '200%'] }}
+          transition={{ duration: 2, repeat: Infinity, repeatDelay: 1 }}
         />
+        <span className="text-3xl">{isRolling ? '🎲' : '🎲'}</span>
+        <span className="relative z-10">{isRolling ? 'ROLLING...' : 'ROLL DICE'}</span>
+      </motion.button>
 
-        <motion.button
-          onClick={rollDice}
-          disabled={disabled || isRolling}
-          whileHover={!disabled && !isRolling ? { scale: 1.02, y: -3 } : {}}
-          whileTap={!disabled && !isRolling ? { scale: 0.98, y: -1 } : {}}
-          className="relative z-10 mb-4 w-full bg-gradient-to-r from-emerald-500 via-green-500 to-emerald-600 hover:from-emerald-600 hover:via-green-600 hover:to-emerald-700 disabled:from-slate-600 disabled:via-slate-700 disabled:to-slate-600 text-white font-bold py-5 px-8 rounded-xl transition-all shadow-2xl font-mono text-xl overflow-hidden group disabled:cursor-not-allowed"
+      <div className="flex gap-4 justify-center">
+        <motion.div 
+          className={`w-24 h-24 bg-gradient-to-br from-white to-gray-100 rounded-2xl shadow-2xl flex items-center justify-center relative overflow-hidden border-4 border-cyan-400/50`}
+          animate={isRolling ? { 
+            rotate: [0, 360, 720, 1080],
+            scale: [1, 1.1, 0.9, 1],
+            y: [0, -20, 0, -10, 0]
+          } : {}}
+          transition={{ duration: 0.6, repeat: isRolling ? Infinity : 0, ease: 'easeInOut' }}
           style={{
-            background: disabled || isRolling
-              ? 'linear-gradient(135deg, #475569 0%, #334155 100%)'
-              : 'linear-gradient(135deg, #4FD1C5 0%, #38B2AC 100%)',
-            border: '2px solid rgba(255, 255, 255, 0.2)',
-            boxShadow: disabled || isRolling
-              ? '0 4px 12px rgba(0,0,0,0.3)'
-              : '0 4px 12px rgba(79, 209, 197, 0.4), inset 0 1px 2px rgba(255,255,255,0.3), 0 0 30px rgba(79, 209, 197, 0.4)',
+            boxShadow: "0 10px 30px rgba(0,0,0,0.3), 0 0 20px rgba(6, 182, 212, 0.4)"
           }}
         >
-          {/* Enhanced shimmer effect */}
-          <motion.div
-            className="absolute inset-0"
-            style={{
-              background: 'linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.3) 50%, transparent 70%)',
-            }}
-            animate={!disabled && !isRolling ? {
-              x: ['-100%', '100%'],
-              y: ['-100%', '100%'],
-              rotate: 45,
-            } : {}}
-            transition={{
-              duration: 3,
-              repeat: Infinity,
-              ease: 'linear',
-            }}
-          />
-          
-          <span className="relative z-10 flex items-center justify-center gap-3">
-            {isRolling ? (
-              <>
-                <motion.span
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 0.5, repeat: Infinity, ease: 'linear' }}
-                  className="text-2xl"
-                >
-                  🎲
-                </motion.span>
-                <span>ROLLING...</span>
-              </>
-            ) : (
-              <>
-                <motion.span 
-                  className="text-2xl"
-                  whileHover={{ scale: 1.2, rotate: 15 }}
-                >
-                  🎲
-                </motion.span>
-                <span>ROLL DICE</span>
-              </>
-            )}
-          </span>
-        </motion.button>
-
-        <div className="flex gap-6 items-center justify-center">
-          <AnimatePresence mode="wait">
+          <div className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-br from-cyan-600 to-blue-600">{dice1}</div>
+          {!isRolling && (
             <motion.div
-              key={isRolling ? 'rolling-1' : dice1}
-              initial={{ scale: 0, rotate: -180 }}
-              animate={{ scale: 1, rotate: 0 }}
-              exit={{ scale: 0, rotate: 180 }}
-              transition={{ type: 'spring', stiffness: 300 }}
-            >
-              <DiceFace value={dice1} isRolling={isRolling} />
-            </motion.div>
-          </AnimatePresence>
-
-          <motion.span 
-            className="text-white text-4xl font-bold font-mono"
-            animate={{ opacity: showResult ? 1 : 0.5 }}
-          >
-            +
-          </motion.span>
-
-          <AnimatePresence mode="wait">
+              className="absolute inset-0 bg-gradient-to-br from-cyan-400/20 to-transparent"
+              animate={{ opacity: [0, 0.5, 0] }}
+              transition={{ duration: 2, repeat: Infinity }}
+            />
+          )}
+        </motion.div>
+        <motion.div 
+          className={`w-24 h-24 bg-gradient-to-br from-white to-gray-100 rounded-2xl shadow-2xl flex items-center justify-center relative overflow-hidden border-4 border-purple-400/50`}
+          animate={isRolling ? { 
+            rotate: [0, -360, -720, -1080],
+            scale: [1, 0.9, 1.1, 1],
+            y: [0, -15, 0, -20, 0]
+          } : {}}
+          transition={{ duration: 0.6, repeat: isRolling ? Infinity : 0, ease: 'easeInOut' }}
+          style={{
+            boxShadow: "0 10px 30px rgba(0,0,0,0.3), 0 0 20px rgba(168, 85, 247, 0.4)"
+          }}
+        >
+          <div className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-br from-purple-600 to-pink-600">{dice2}</div>
+          {!isRolling && (
             <motion.div
-              key={isRolling ? 'rolling-2' : dice2}
-              initial={{ scale: 0, rotate: 180 }}
-              animate={{ scale: 1, rotate: 0 }}
-              exit={{ scale: 0, rotate: -180 }}
-              transition={{ type: 'spring', stiffness: 300 }}
-            >
-              <DiceFace value={dice2} isRolling={isRolling} />
-            </motion.div>
-          </AnimatePresence>
-        </div>
-
-        {/* Result display */}
-        <AnimatePresence>
-          {showResult && (
+              className="absolute inset-0 bg-gradient-to-br from-purple-400/20 to-transparent"
+              animate={{ opacity: [0, 0.5, 0] }}
+              transition={{ duration: 2, repeat: Infinity, delay: 0.5 }}
+            />
+          )}
+        </motion.div>
+      </div>
+      
+      {!isRolling && dice1 + dice2 > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center mt-4"
+        >
+          <div className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400">
+            Total: {dice1 + dice2}
+          </div>
+          {dice1 === dice2 && (
             <motion.div
-              initial={{ opacity: 0, y: 20, scale: 0.8 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -20, scale: 0.8 }}
-              className="absolute -bottom-16 left-1/2 transform -translate-x-1/2"
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              className="text-yellow-400 font-bold text-lg mt-2"
             >
-              <div 
-                className="text-center px-6 py-3 rounded-full font-mono"
-                style={{
-                  background: 'rgba(16, 185, 129, 0.2)',
-                  border: '2px solid rgba(16, 185, 129, 0.8)',
-                  boxShadow: '0 0 20px rgba(16, 185, 129, 0.6)',
-                }}
-              >
-                <motion.div 
-                  className="text-3xl font-bold text-emerald-400"
-                  animate={{ scale: [1, 1.2, 1] }}
-                  transition={{ duration: 0.3 }}
-                >
-                  {dice1 + dice2}
-                </motion.div>
-                <div className="text-xs text-emerald-300">TOTAL</div>
-              </div>
+              🎉 DOUBLES! 🎉
             </motion.div>
           )}
-        </AnimatePresence>
-      </div>
+        </motion.div>
+      )}
     </>
   );
 }

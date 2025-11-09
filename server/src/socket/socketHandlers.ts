@@ -22,6 +22,55 @@ async function getGameById(gameId: string) {
   }
 }
 
+async function endPlayerTurn(game: any, gameId: string, io: Server) {
+  if (!game || !game.players || game.players.length === 0) {
+    console.error('❌ Cannot end turn: Invalid game or no players');
+    return;
+  }
+
+  const currentIndex = game.players.findIndex((p: any) => p.id === game.currentTurn);
+  
+  if (currentIndex === -1) {
+    console.error(`❌ Cannot end turn: Current player ${game.currentTurn} not found in players list`);
+    return;
+  }
+
+  const nextIndex = (currentIndex + 1) % game.players.length;
+  const previousPlayer = game.players[currentIndex].name;
+  const nextPlayer = game.players[nextIndex].name;
+  
+  game.currentTurn = game.players[nextIndex].id;
+  game.turnNumber += 1;
+
+  console.log(`🔄 Turn switching: ${previousPlayer} → ${nextPlayer} (Turn #${game.turnNumber})`);
+
+  try {
+    if (useMongoDB()) {
+      await game.save();
+    } else {
+      updateGame(gameId, game);
+    }
+
+    io.to(gameId).emit('turn-ended', {
+      nextPlayerId: game.currentTurn,
+      nextPlayerName: game.players[nextIndex].name,
+      turnNumber: game.turnNumber,
+    });
+
+    // Broadcast updated game state to all players
+    const gameState = {
+      ...game.toObject ? game.toObject() : game,
+      boardState: game.boardState || [],
+      players: game.players || [],
+    };
+    io.to(gameId).emit('game-state', gameState);
+    console.log(`✅ Turn ended successfully, next player: ${nextPlayer}`);
+  } catch (error) {
+    console.error('❌ Error in endPlayerTurn:', error);
+    throw error;
+  }
+}
+
 export function setupSocketHandlers(io: Server, socket: Socket) {
   // Join game room
   socket.on('join-game', async ({ gameId, playerId }) => {
@@ -134,7 +183,9 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
             property: property.name,
           });
         } else {
-          socket.emit('landed-on-space', {
+          // Broadcast to all players so they can see what space was landed on
+          io.to(gameId).emit('landed-on-space', {
+            playerId,
             property,
             canBuy: !property.ownerId && property.price > 0,
             mustPayRent: property.ownerId && property.ownerId !== playerId,
@@ -195,6 +246,14 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
         propertyId,
         propertyName: property.name,
       });
+
+      // Automatically end turn after buying property
+      console.log(`💰 Property bought by ${playerName}, ending turn...`);
+      try {
+        await endPlayerTurn(game, gameId, io);
+      } catch (turnError) {
+        console.error('Error ending turn after property purchase:', turnError);
+      }
     } catch (error) {
       console.error('Error buying property:', error);
       socket.emit('error', { message: 'Failed to buy property' });
@@ -330,7 +389,7 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
     }
   });
 
-  // End turn
+  // End turn (for manual turn ending or skipping)
   socket.on('end-turn', async ({ gameId, playerId }) => {
     try {
       const game = await getGameById(gameId);
@@ -340,21 +399,7 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
         return;
       }
 
-      const currentIndex = game.players.findIndex((p: any) => p.id === playerId);
-      const nextIndex = (currentIndex + 1) % game.players.length;
-      game.currentTurn = game.players[nextIndex].id;
-      game.turnNumber += 1;
-
-      if (useMongoDB()) {
-        await game.save();
-      } else {
-        updateGame(gameId, game);
-      }
-
-      io.to(gameId).emit('turn-ended', {
-        nextPlayerId: game.currentTurn,
-        turnNumber: game.turnNumber,
-      });
+      await endPlayerTurn(game, gameId, io);
     } catch (error) {
       console.error('Error ending turn:', error);
       socket.emit('error', { message: 'Failed to end turn' });
@@ -396,6 +441,14 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
         propertyId,
         amount: rent,
       });
+
+      // Automatically end turn after paying rent
+      console.log(`💸 Rent paid by ${player.name}, ending turn...`);
+      try {
+        await endPlayerTurn(game, gameId, io);
+      } catch (turnError) {
+        console.error('Error ending turn after rent payment:', turnError);
+      }
     } catch (error) {
       console.error('Error paying rent:', error);
       socket.emit('error', { message: 'Failed to pay rent' });

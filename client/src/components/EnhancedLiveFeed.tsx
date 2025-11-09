@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 
 interface FeedEvent {
   id: string;
@@ -15,6 +15,7 @@ interface FeedEvent {
 interface EnhancedLiveFeedProps {
   events: FeedEvent[];
   maxEvents?: number;
+  currentPlayerId?: string;
 }
 
 const EVENT_ICONS = {
@@ -29,20 +30,21 @@ const EVENT_ICONS = {
 };
 
 const EVENT_COLORS = {
-  dice: 'text-blue-400 bg-blue-400/10 border-blue-400/30',
-  purchase: 'text-green-400 bg-green-400/10 border-green-400/30',
-  rent: 'text-red-400 bg-red-400/10 border-red-400/30',
-  land: 'text-yellow-400 bg-yellow-400/10 border-yellow-400/30',
-  special: 'text-purple-400 bg-purple-400/10 border-purple-400/30',
-  duel: 'text-orange-400 bg-orange-400/10 border-orange-400/30',
-  upgrade: 'text-cyan-400 bg-cyan-400/10 border-cyan-400/30',
-  bankrupt: 'text-gray-400 bg-gray-400/10 border-gray-400/30',
+  dice: 'from-code-blue to-code-purple',
+  purchase: 'from-code-green to-code-blue',
+  rent: 'from-code-red to-code-orange',
+  land: 'from-code-purple to-code-blue',
+  special: 'from-code-orange to-code-red',
+  duel: 'from-code-red to-code-purple',
+  upgrade: 'from-code-green to-code-blue',
+  bankrupt: 'from-gray-600 to-gray-800',
 };
 
-export default function EnhancedLiveFeed({ events, maxEvents = 10 }: EnhancedLiveFeedProps) {
-  const [expandedEvent, setExpandedEvent] = useState<string | null>(null);
-  const [hoveredEvent, setHoveredEvent] = useState<string | null>(null);
+type FilterType = 'all' | 'my-turn' | 'transactions';
+
+export default function EnhancedLiveFeed({ events, maxEvents = 20, currentPlayerId }: EnhancedLiveFeedProps) {
   const feedRef = useRef<HTMLDivElement>(null);
+  const [filter, setFilter] = useState<FilterType>('all');
   
   // Auto-scroll to latest event
   useEffect(() => {
@@ -59,243 +61,103 @@ export default function EnhancedLiveFeed({ events, maxEvents = 10 }: EnhancedLiv
     if (diff < 60000) return 'Just now';
     if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
     if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-    return date.toLocaleTimeString();
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  const getEventDetails = (event: FeedEvent) => {
-    const details: string[] = [];
-    
-    switch (event.type) {
-      case 'purchase':
-        if (event.property) details.push(`Property: ${event.property}`);
-        if (event.amount) details.push(`Price: $${event.amount}`);
-        break;
-      case 'rent':
-        if (event.property) details.push(`Property: ${event.property}`);
-        if (event.amount) details.push(`Rent: $${event.amount}`);
-        break;
-      case 'dice':
-        const match = event.message.match(/rolled (\d+)/);
-        if (match) details.push(`Moving ${match[1]} spaces`);
-        break;
-      case 'duel':
-        details.push('Code duel in progress!');
-        break;
-      case 'bankrupt':
-        details.push('Player eliminated from game');
-        break;
-    }
-    
-    return details;
-  };
+  const filteredEvents = events.filter(event => {
+    if (filter === 'all') return true;
+    if (filter === 'my-turn') return event.player === currentPlayerId;
+    if (filter === 'transactions') return ['purchase', 'rent', 'upgrade'].includes(event.type);
+    return true;
+  });
 
-  const recentEvents = events.slice(-maxEvents);
+  const recentEvents = filteredEvents.slice(-maxEvents);
 
   return (
-    <div 
-      className="h-full flex flex-col rounded-xl overflow-hidden relative"
-      style={{
-        background: 'rgba(15, 25, 45, 0.6)',
-        backdropFilter: 'blur(20px) saturate(180%)',
-        border: '1px solid rgba(79, 209, 197, 0.2)',
-        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.05)',
-      }}
-    >
-      {/* Animated top border scan line */}
-      <motion.div
-        className="absolute top-0 left-0 right-0 h-0.5 z-10"
-        style={{
-          background: 'linear-gradient(90deg, transparent 0%, #4FD1C5 50%, transparent 100%)',
-        }}
-        animate={{
-          x: ['-100%', '100%'],
-        }}
-        transition={{
-          duration: 3,
-          repeat: Infinity,
-          ease: 'linear',
-        }}
-      />
-      
-      {/* Header */}
-      <div className="px-4 py-3 border-b border-emerald-400/20 relative z-10">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <motion.div
-              className="w-2 h-2 bg-emerald-400 rounded-full"
-              style={{
-                boxShadow: '0 0 10px #4FD1C5',
-              }}
-              animate={{ 
-                opacity: [0.5, 1, 0.5],
-                scale: [1, 1.3, 1],
-              }}
-              transition={{ duration: 2, repeat: Infinity }}
-            />
-            <h3 className="text-emerald-400 font-bold font-mono text-sm uppercase tracking-wider">
-              LIVE FEED
-            </h3>
-          </div>
-          <span className="text-white/50 text-xs bg-emerald-400/10 px-3 py-1 rounded-full">
-            {events.length} events
-          </span>
+    <div className="h-full flex flex-col bg-gradient-to-br from-gray-900 to-gray-800 rounded-xl border-2 border-cyan-500/30 overflow-hidden shadow-xl" style={{ boxShadow: '0 0 20px rgba(6, 182, 212, 0.2)' }}>
+      {/* Header with Filter */}
+      <div className="p-4 border-b-2 border-cyan-500/30 flex items-center justify-between bg-gradient-to-r from-gray-800/50 to-gray-900/50 backdrop-blur-sm">
+        <div className="flex items-center gap-3">
+          <div className="w-3 h-3 bg-emerald-400 rounded-full" />
+          <span className="text-white font-black text-base tracking-wider">LIVE FEED</span>
+        </div>
+        <div className="flex gap-2">
+          {(['all', 'my-turn', 'transactions'] as FilterType[]).map((f) => (
+            <motion.button
+              key={f}
+              onClick={() => setFilter(f)}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                filter === f
+                  ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg'
+                  : 'bg-gray-700/50 text-gray-300 hover:bg-gray-600/50 hover:text-white'
+              }`}
+            >
+              {f === 'all' ? '📋 All' : f === 'my-turn' ? '👤 Me' : '💰 Money'}
+            </motion.button>
+          ))}
         </div>
       </div>
 
-      {/* Events list */}
+      {/* Events List */}
       <div 
+        className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar"
         ref={feedRef}
-        className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar"
+        style={{
+          scrollbarWidth: 'thin',
+          scrollbarColor: '#06B6D4 #1F2937',
+        }}
       >
-        <AnimatePresence initial={false}>
-          {recentEvents.map((event) => {
-            const borderColorMap: { [key: string]: string } = {
-              dice: '#4FD1C5',
-              land: '#FC8181',
-              purchase: '#68D391',
-              rent: '#F6E05E',
-              special: '#FBD38D',
-              duel: '#FC8181',
-              upgrade: '#68D391',
-              bankrupt: '#9CA3AF',
-            };
-            
-            return (
-            <motion.div
-              key={event.id}
-              layout
-              initial={{ opacity: 0, x: 30, scale: 0.9 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
-              exit={{ opacity: 0, x: -30, scale: 0.9 }}
-              transition={{ 
-                type: 'spring',
-                stiffness: 300,
-                damping: 30,
-              }}
-              onMouseEnter={() => setHoveredEvent(event.id)}
-              onMouseLeave={() => setHoveredEvent(null)}
-              onClick={() => setExpandedEvent(expandedEvent === event.id ? null : event.id)}
-              className={`relative rounded-lg p-3 cursor-pointer transition-all ${
-                EVENT_COLORS[event.type]
-              } ${hoveredEvent === event.id ? 'scale-[1.02]' : ''}`}
-              style={{
-                background: 'rgba(255, 255, 255, 0.02)',
-                borderLeft: `3px solid ${borderColorMap[event.type] || '#4FD1C5'}`,
-                boxShadow: hoveredEvent === event.id 
-                  ? `0 4px 12px rgba(0, 0, 0, 0.3), 0 0 20px ${borderColorMap[event.type]}40`
-                  : 'none',
-              }}
-            >
-              {/* Main content */}
-              <div className="flex items-start gap-3">
-                {/* Enhanced Icon */}
-                <motion.div
-                  className="text-2xl flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0"
-                  style={{
-                    background: `rgba(${event.type === 'dice' ? '79, 209, 197' : event.type === 'purchase' ? '104, 211, 145' : event.type === 'rent' ? '252, 129, 129' : '246, 224, 94'}, 0.2)`,
-                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)',
-                  }}
-                  animate={hoveredEvent === event.id ? {
-                    scale: [1, 1.2, 1],
-                    rotate: [0, 10, -10, 0],
-                  } : {}}
-                  transition={{ duration: 0.3 }}
-                >
-                  {EVENT_ICONS[event.type]}
-                </motion.div>
-
-                {/* Content */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    {event.playerAvatar && (
-                      <span className="text-sm">{event.playerAvatar}</span>
-                    )}
-                    <span className="text-xs font-semibold font-mono text-emerald-400">
-                      {event.player}
-                    </span>
-                    <span className="text-xs text-white/40 ml-auto font-mono">
-                      {formatTimestamp(event.timestamp)}
-                    </span>
-                  </div>
-                  <div className="text-sm font-mono leading-relaxed text-white/80">
-                    {event.message}
-                  </div>
-                  {event.amount && (
-                    <div className={`inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded text-xs font-bold font-mono ${
-                      event.amount > 0 ? 'bg-green-400/20 text-green-400' : 'bg-red-400/20 text-red-400'
-                    }`}>
-                      <span>{event.amount > 0 ? '+' : ''}</span>
-                      <span>$</span>
-                      <span>{Math.abs(event.amount)}</span>
-                    </div>
-                  )}
-
-                  {/* Expanded details */}
-                  <AnimatePresence>
-                    {expandedEvent === event.id && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="mt-2 pt-2 border-t border-white/10 text-xs space-y-1"
-                      >
-                        {getEventDetails(event).map((detail, idx) => (
-                          <div key={idx} className="opacity-80">
-                            {detail}
-                          </div>
-                        ))}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
+        {recentEvents.map((event, idx) => (
+          <motion.div
+            key={event.id}
+            initial={{ opacity: 0, x: -30, scale: 0.9 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            transition={{ delay: idx * 0.03, type: 'spring', stiffness: 200 }}
+            whileHover={{ scale: 1.02, x: 4 }}
+            className={`bg-gradient-to-r ${EVENT_COLORS[event.type]} rounded-xl p-3 border-2 border-white/20 hover:border-cyan-400/50 transition-all cursor-pointer shadow-lg`}
+            style={{
+              background: `linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.9))`,
+              backdropFilter: 'blur(10px)',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+            }}
+          >
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 bg-white/10 rounded-full flex items-center justify-center flex-shrink-0 text-lg backdrop-blur-sm">
+                {EVENT_ICONS[event.type] || '⭐'}
               </div>
-
-              {/* New event indicator */}
-              {event.timestamp > Date.now() - 3000 && (
-                <motion.div
-                  className="absolute top-1 right-1 w-2 h-2 bg-emerald-400 rounded-full"
-                  style={{
-                    boxShadow: '0 0 10px #4FD1C5',
-                  }}
-                  animate={{ 
-                    scale: [0, 1.5, 1],
-                    opacity: [0, 1, 1],
-                  }}
-                  transition={{ duration: 0.3 }}
-                />
-              )}
-            </motion.div>
-            );
-          })}
-        </AnimatePresence>
-
-        {/* Empty state */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-text-muted">{formatTimestamp(event.timestamp)}</span>
+                  {event.amount && (
+                    <span className={`text-xs font-bold ${
+                      event.amount > 0 ? 'text-code-green' : 'text-code-red'
+                    }`}>
+                      {event.amount > 0 ? '+' : ''}${Math.abs(event.amount)}
+                    </span>
+                  )}
+                </div>
+                <div className="text-sm text-text-primary break-words font-medium">{event.message}</div>
+                {event.player && (
+                  <div className="text-xs text-text-muted mt-1 flex items-center gap-1">
+                    <span>{event.playerAvatar}</span>
+                    <span>{event.player}</span>
+                  </div>
+                )}
+                {event.property && (
+                  <div className="text-xs text-code-blue mt-1">📍 {event.property}</div>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        ))}
         {recentEvents.length === 0 && (
-          <div className="text-center text-white/40 text-sm font-mono py-8">
+          <div className="text-center text-text-muted text-sm py-8">
             No events yet...
           </div>
         )}
       </div>
-
-      <style>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 6px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: rgba(255, 255, 255, 0.05);
-          border-radius: 3px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.2);
-          border-radius: 3px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: rgba(255, 255, 255, 0.3);
-        }
-      `}</style>
     </div>
   );
 }
-
-

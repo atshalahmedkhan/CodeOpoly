@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { io, Socket } from 'socket.io-client';
 import { motion } from 'framer-motion';
@@ -155,13 +155,12 @@ export default function GameRoom() {
       return;
     }
 
-    console.log('Connecting to socket:', SOCKET_URL);
     const newSocket = io(SOCKET_URL);
     setSocket(newSocket);
 
     // Connection error handling
     newSocket.on('connect', () => {
-      console.log('Socket connected:', newSocket.id);
+      // Socket connected successfully
     });
 
     newSocket.on('connect_error', (error) => {
@@ -170,17 +169,15 @@ export default function GameRoom() {
     });
 
     // Join game
-    console.log('Joining game:', { gameId, playerId });
     newSocket.emit('join-game', { gameId, playerId });
 
     // Listen for game state updates
     newSocket.on('game-state', (state: GameState) => {
-      console.log('Received game state:', state);
       if (!state || !state.boardState || state.boardState.length === 0) {
-        console.error('Invalid game state received:', state);
         return;
       }
 
+      // Only update if state actually changed (prevent unnecessary re-renders)
       const normalizedState: GameState = {
         ...state,
         startTime: state.startTime
@@ -188,7 +185,29 @@ export default function GameRoom() {
           : gameState?.startTime || Date.now(),
       };
 
-      setGameState(normalizedState);
+      // Use functional update to prevent stale closures
+      setGameState(prevState => {
+        // Skip update if state hasn't meaningfully changed (optimize performance)
+        if (prevState && 
+            prevState.currentTurn === normalizedState.currentTurn &&
+            prevState.turnNumber === normalizedState.turnNumber &&
+            prevState.status === normalizedState.status &&
+            prevState.players.length === normalizedState.players.length) {
+          // Quick check: compare player positions and money (most frequently changing)
+          const playersChanged = prevState.players.some((p: any, i: number) => {
+            const newPlayer = normalizedState.players[i];
+            return !newPlayer || 
+                   p.position !== newPlayer.position || 
+                   p.money !== newPlayer.money ||
+                   p.id !== newPlayer.id;
+          });
+          if (!playersChanged) {
+            return prevState; // No meaningful changes, skip update
+          }
+        }
+        return normalizedState;
+      });
+      
       playersRef.current = normalizedState.players;
 
       if (!hasLoggedStartRef.current) {
@@ -220,7 +239,6 @@ export default function GameRoom() {
 
     // Listen for when other players join
     newSocket.on('player-joined', (data: any) => {
-      console.log('Player joined:', data);
       const { playerName, playerAvatar } = data;
       
       // Show notification
@@ -244,12 +262,15 @@ export default function GameRoom() {
     }, 100);
 
     newSocket.on('dice-rolled', (data: any) => {
-      const rollerId = data.playerId || playerId;
+      const rollerId = data.playerId;
       const rollerName = getPlayerNameById(playersRef.current, rollerId);
 
-      setDiceResult({ dice1: data.dice[0], dice2: data.dice[1], total: data.total });
-      setActionType('dice-rolling');
-      setLandedPosition(data.newPosition);
+      // Only update dice result and action type if it's the current player
+      if (rollerId === playerId) {
+        setDiceResult({ dice1: data.dice[0], dice2: data.dice[1], total: data.total });
+        setActionType('dice-rolling');
+        setLandedPosition(data.newPosition);
+      }
       
       // Trigger particle effects
       if (rollerId === playerId) {
@@ -274,14 +295,19 @@ export default function GameRoom() {
     newSocket.on('landed-on-space', (data: any) => {
       if (!data.property) return;
 
+      const landedPlayerId = data.playerId;
       const property = data.property;
-      setLandedProperty(property);
-      setLandedPosition(property.position);
+      
+      // Only update state for the player who actually landed
+      if (landedPlayerId === playerId) {
+        setLandedProperty(property);
+        setLandedPosition(property.position);
+      }
 
-      const activePlayerName = getPlayerNameById(playersRef.current, playerId);
+      const activePlayerName = getPlayerNameById(playersRef.current, landedPlayerId);
       const propertyName = describeProperty(property);
 
-      const activePlayer = playersRef.current.find((p: any) => p.id === playerId);
+      const activePlayer = playersRef.current.find((p: any) => p.id === landedPlayerId);
       addEvent({
         type: property.isSpecial ? 'special' : 'land',
         message: `${activePlayerName} landed on ${propertyName}`,
@@ -290,6 +316,9 @@ export default function GameRoom() {
         playerAvatar: activePlayer?.avatar,
         property: propertyName,
       });
+
+      // Only process actions for the player who landed
+      if (landedPlayerId !== playerId) return;
 
       if (property.isSpecial) {
         setActionType('landed-special');
@@ -415,8 +444,28 @@ export default function GameRoom() {
     });
 
     newSocket.on('turn-ended', (data: any) => {
+      const nextPlayerName = data.nextPlayerName || getPlayerNameById(playersRef.current, data.nextPlayerId);
+      
       setActionType(null);
       setDiceResult(null);
+      setLandedProperty(null);
+      setShowChallengeModal(false);
+      
+      // Add event to log
+      addEvent({
+        type: 'info',
+        message: `🔄 Turn switched to ${nextPlayerName}`,
+        timestamp: Date.now(),
+        player: nextPlayerName,
+      });
+      
+      // Show notification
+      if (data.nextPlayerId === playerId) {
+        showNotification('success', 'Your Turn!', `It's your turn to roll the dice`, 3000);
+      } else {
+        showNotification('info', 'Turn Changed', `${nextPlayerName}'s turn`, 2000);
+      }
+      
       newSocket.emit('get-game-state', { gameId });
     });
 
@@ -648,12 +697,14 @@ export default function GameRoom() {
     });
   };
 
-  const calculateNetWorth = (player: any) => {
-    const propertyValue = gameState?.boardState
+  // Memoize net worth calculation to prevent expensive recalculations
+  const calculateNetWorth = useCallback((player: any) => {
+    if (!gameState?.boardState || !player) return player?.money || 0;
+    const propertyValue = gameState.boardState
       .filter(p => p.ownerId === player.id)
-      .reduce((sum, p) => sum + p.price + (p.houses * p.houseCost || 0), 0) || 0;
+      .reduce((sum, p) => sum + p.price + (p.houses * (p.houseCost || 0)), 0);
     return player.money + propertyValue;
-  };
+  }, [gameState?.boardState]);
 
   useEffect(() => {
     if (!gameState) return;
@@ -757,20 +808,27 @@ export default function GameRoom() {
         : landedProperty.rentWithHouse?.[landedProperty.houses - 1] || landedProperty.rent)
     : 0;
 
-  // Calculate winner for game over
-  const winner = gameState.status === 'finished' 
-    ? gameState.players.reduce((prev, curr) => 
-        calculateNetWorth(curr) > calculateNetWorth(prev) ? curr : prev
-      )
-    : null;
+  // Memoize winner calculation to prevent expensive recalculations
+  const winner = useMemo(() => {
+    if (!gameState || gameState.status !== 'finished' || !gameState.players.length) {
+      return null;
+    }
+    return gameState.players.reduce((prev, curr) => 
+      calculateNetWorth(curr) > calculateNetWorth(prev) ? curr : prev
+    );
+  }, [gameState?.status, gameState?.players, calculateNetWorth]);
+
+  // Memoize players with net worth to prevent recalculation on every render
+  const playersWithNetWorth = useMemo(() => {
+    if (!gameState?.players) return [];
+    return gameState.players.map((p: any) => ({
+      ...p,
+      netWorth: calculateNetWorth(p),
+    }));
+  }, [gameState?.players, calculateNetWorth]);
 
   return (
-    <div 
-      className="min-h-screen relative overflow-hidden"
-      style={{
-        background: 'linear-gradient(135deg, #0a0e1a 0%, #1a1f2e 100%)',
-      }}
-    >
+    <div className="game-container">
       <Toaster 
         position="top-right"
         toastOptions={{
@@ -844,23 +902,23 @@ export default function GameRoom() {
         </motion.div>
       </div>
 
-      {/* Main Game Area */}
-      <div className="pt-24 pb-4">
-        <div className="container mx-auto max-w-7xl px-4">
+      {/* Main Game Area - YC Demo Layout */}
+      <div className="pt-20 pb-2 h-[calc(100vh-5rem)] overflow-hidden">
+        <div className="container mx-auto max-w-[1800px] px-6 h-full">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.5 }}
-            className="grid grid-cols-1 lg:grid-cols-4 gap-4"
+            className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full"
           >
-            {/* Board - 75% */}
+            {/* Board - Center Focus 70% */}
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.6 }}
-              className="lg:col-span-3"
+              className="lg:col-span-8 flex items-center justify-center"
             >
-              <div className="relative">
+              <div className="relative w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-900/50 via-slate-800/50 to-slate-900/50 rounded-3xl border-2 border-cyan-400/30 shadow-2xl shadow-cyan-500/20 backdrop-blur-sm p-4">
                 <CameraController enableParallax={true} enableShake={true}>
                   <IsometricView>
                     <IsometricToggle />
@@ -930,9 +988,15 @@ export default function GameRoom() {
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.6, delay: 0.2 }}
-              className="lg:col-span-1 space-y-4"
+              className="lg:col-span-4 space-y-4 overflow-y-auto"
+              style={{ maxHeight: 'calc(100vh - 6rem)' }}
             >
-              <div className="space-y-4">
+              {/* Player Cards - Premium Design */}
+              <div className="space-y-3">
+                <div className="text-xs font-bold text-cyan-400 uppercase tracking-wider mb-2 flex items-center gap-2 px-1">
+                  <span className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse"></span>
+                  Players ({gameState.players.length})
+                </div>
                 {gameState.players.map((player, index) => {
                   const playerProperties = gameState.boardState
                     .filter((p: any) => p.ownerId === player.id)
@@ -958,7 +1022,11 @@ export default function GameRoom() {
                 })}
               </div>
               
-              <div className="h-64">
+              <div className="flex-1 min-h-[300px]">
+                <div className="text-xs font-bold text-purple-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                  <span className="w-2 h-2 bg-purple-400 rounded-full animate-pulse"></span>
+                  Live Activity Feed
+                </div>
                 <EnhancedLiveFeed 
                   events={gameEvents.map(e => {
                     const player = gameState.players.find((p: any) => p.id === e.player || p.name === e.player);
@@ -1051,6 +1119,10 @@ export default function GameRoom() {
             setCurrentProblem(null);
             setLandedProperty(null);
             setActionType(null);
+            // End turn when player skips buying property
+            if (socket && gameState) {
+              socket.emit('end-turn', { gameId: gameState._id, playerId });
+            }
           }}
           timeLimit={300}
         />
@@ -1088,14 +1160,11 @@ export default function GameRoom() {
       {/* Game Over Modal */}
       {showGameOver && winner && (
         <GameOverModal
-          players={gameState.players.map((p: any) => ({
-            ...p,
-            netWorth: calculateNetWorth(p),
-          }))}
-          winner={{
+          players={playersWithNetWorth}
+          winner={winner ? {
             ...winner,
             netWorth: calculateNetWorth(winner),
-          }}
+          } : undefined}
           onClose={() => navigate('/')}
         />
       )}
