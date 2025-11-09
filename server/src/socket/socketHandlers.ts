@@ -23,22 +23,52 @@ async function getGameById(gameId: string) {
 }
 
 async function endPlayerTurn(game: any, gameId: string, io: Server) {
+  if (!game || !game.players || game.players.length === 0) {
+    console.error('❌ Cannot end turn: Invalid game or no players');
+    return;
+  }
+
   const currentIndex = game.players.findIndex((p: any) => p.id === game.currentTurn);
+  
+  if (currentIndex === -1) {
+    console.error(`❌ Cannot end turn: Current player ${game.currentTurn} not found in players list`);
+    return;
+  }
+
   const nextIndex = (currentIndex + 1) % game.players.length;
+  const previousPlayer = game.players[currentIndex].name;
+  const nextPlayer = game.players[nextIndex].name;
+  
   game.currentTurn = game.players[nextIndex].id;
   game.turnNumber += 1;
 
-  if (useMongoDB()) {
-    await game.save();
-  } else {
-    updateGame(gameId, game);
-  }
+  console.log(`🔄 Turn switching: ${previousPlayer} → ${nextPlayer} (Turn #${game.turnNumber})`);
 
-  io.to(gameId).emit('turn-ended', {
-    nextPlayerId: game.currentTurn,
-    nextPlayerName: game.players[nextIndex].name,
-    turnNumber: game.turnNumber,
-  });
+  try {
+    if (useMongoDB()) {
+      await game.save();
+    } else {
+      updateGame(gameId, game);
+    }
+
+    io.to(gameId).emit('turn-ended', {
+      nextPlayerId: game.currentTurn,
+      nextPlayerName: game.players[nextIndex].name,
+      turnNumber: game.turnNumber,
+    });
+
+    // Broadcast updated game state to all players
+    const gameState = {
+      ...game.toObject ? game.toObject() : game,
+      boardState: game.boardState || [],
+      players: game.players || [],
+    };
+    io.to(gameId).emit('game-state', gameState);
+    console.log(`✅ Turn ended successfully, next player: ${nextPlayer}`);
+  } catch (error) {
+    console.error('❌ Error in endPlayerTurn:', error);
+    throw error;
+  }
 }
 
 export function setupSocketHandlers(io: Server, socket: Socket) {
@@ -218,7 +248,12 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
       });
 
       // Automatically end turn after buying property
-      await endPlayerTurn(game, gameId, io);
+      console.log(`💰 Property bought by ${playerName}, ending turn...`);
+      try {
+        await endPlayerTurn(game, gameId, io);
+      } catch (turnError) {
+        console.error('Error ending turn after property purchase:', turnError);
+      }
     } catch (error) {
       console.error('Error buying property:', error);
       socket.emit('error', { message: 'Failed to buy property' });
@@ -408,7 +443,12 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
       });
 
       // Automatically end turn after paying rent
-      await endPlayerTurn(game, gameId, io);
+      console.log(`💸 Rent paid by ${player.name}, ending turn...`);
+      try {
+        await endPlayerTurn(game, gameId, io);
+      } catch (turnError) {
+        console.error('Error ending turn after rent payment:', turnError);
+      }
     } catch (error) {
       console.error('Error paying rent:', error);
       socket.emit('error', { message: 'Failed to pay rent' });
