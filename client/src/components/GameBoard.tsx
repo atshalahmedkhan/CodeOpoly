@@ -164,7 +164,7 @@ const GameBoard = memo(function GameBoard({
     const isHovered = hoveredProperty === property.position;
     const isSelected = selectedProperty === property.position;
     const isGlowing = glowingTile === property.position;
-    const icon = getPropertyIcon(property);
+    const icon = property.specialType || '🏠';
     
     // Handle special spaces
     if (property.isSpecial && (property.specialType === 'chance' || property.specialType === 'community-chest')) {

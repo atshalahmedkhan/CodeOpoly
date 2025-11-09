@@ -248,7 +248,6 @@ export default function GameRoom() {
       addEvent({
         type: 'info',
         message: `🎮 ${playerName} joined the game`,
-        timestamp: Date.now(),
         player: playerName,
         playerAvatar: playerAvatar,
       });
@@ -280,7 +279,6 @@ export default function GameRoom() {
       addEvent({
         type: 'dice',
         message: `${rollerName} rolled ${data.total} (${data.dice[0]} + ${data.dice[1]})`,
-        timestamp: Date.now(),
         player: rollerName,
         playerAvatar: playersRef.current.find(p => p.id === rollerId)?.avatar,
       });
@@ -311,7 +309,6 @@ export default function GameRoom() {
       addEvent({
         type: property.isSpecial ? 'special' : 'land',
         message: `${activePlayerName} landed on ${propertyName}`,
-        timestamp: Date.now(),
         player: activePlayerName,
         playerAvatar: activePlayer?.avatar,
         property: propertyName,
@@ -386,7 +383,6 @@ export default function GameRoom() {
       addEvent({
         type: 'purchase',
         message: `${data.playerName || 'Player'} bought ${data.propertyName}`,
-        timestamp: Date.now(),
         player: data.playerName || 'Player',
         playerAvatar: playersRef.current.find(p => p.id === data.playerId)?.avatar,
         property: data.propertyName,
@@ -455,7 +451,6 @@ export default function GameRoom() {
       addEvent({
         type: 'info',
         message: `🔄 Turn switched to ${nextPlayerName}`,
-        timestamp: Date.now(),
         player: nextPlayerName,
       });
       

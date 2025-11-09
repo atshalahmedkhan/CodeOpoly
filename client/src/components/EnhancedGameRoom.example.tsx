@@ -22,10 +22,10 @@ export default function EnhancedGameRoomExample() {
   // Game state
   const [gameState, setGameState] = useState({
     players: [
-      { id: '1', name: 'Alice', avatar: '👩‍💻', money: 1500, position: 0, properties: [], color: '#10b981' },
-      { id: '2', name: 'Bob', avatar: '👨‍💻', money: 1500, position: 0, properties: [], color: '#3b82f6' },
-      { id: '3', name: 'Charlie', avatar: '🤖', money: 1500, position: 0, properties: [], color: '#f59e0b' },
-      { id: '4', name: 'Diana', avatar: '🦊', money: 1500, position: 0, properties: [], color: '#ec4899' },
+      { id: '1', name: 'Alice', avatar: '👩‍💻', money: 1500, position: 0, properties: [], color: '#10b981', inJail: false, jailTurns: 0 },
+      { id: '2', name: 'Bob', avatar: '👨‍💻', money: 1500, position: 0, properties: [], color: '#3b82f6', inJail: false, jailTurns: 0 },
+      { id: '3', name: 'Charlie', avatar: '🤖', money: 1500, position: 0, properties: [], color: '#f59e0b', inJail: false, jailTurns: 0 },
+      { id: '4', name: 'Diana', avatar: '🦊', money: 1500, position: 0, properties: [], color: '#ec4899', inJail: false, jailTurns: 0 },
     ],
     currentPlayerId: '1',
     boardState: [], // Your board properties
@@ -145,7 +145,7 @@ export default function EnhancedGameRoomExample() {
                 <EnhancedMonopolyBoard
                   boardState={gameState.boardState}
                   players={gameState.players}
-                  currentPlayer={currentPlayer}
+                  currentPlayer={currentPlayer || null}
                   onTileClick={(property) => {
                     // Handle property click
                     if (!property.ownerId) {

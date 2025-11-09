@@ -87,6 +87,9 @@ export const CHALLENGES: Record<'easy' | 'medium' | 'hard', Challenge[]> = {
         { input: [['h', 'e', 'l', 'l', 'o']], expectedOutput: ['o', 'l', 'l', 'e', 'h'] },
         { input: [['H', 'a', 'n', 'n', 'a', 'h']], expectedOutput: ['h', 'a', 'n', 'n', 'a', 'H'] },
       ],
+      examples: [
+        { input: '["h","e","l","l","o"]', output: '["o","l","l","e","h"]' },
+      ],
       timeLimit: 20,
       baseReward: 80,
     },
@@ -106,6 +109,9 @@ export const CHALLENGES: Record<'easy' | 'medium' | 'hard', Challenge[]> = {
         { input: [[1, 2, 3, 1]], expectedOutput: true },
         { input: [[1, 2, 3, 4]], expectedOutput: false },
         { input: [[1, 1, 1, 3, 3, 4, 3, 2, 4, 2]], expectedOutput: true },
+      ],
+      examples: [
+        { input: 'nums = [1,2,3,1]', output: 'true' },
       ],
       timeLimit: 25,
       baseReward: 90,
@@ -152,6 +158,9 @@ export const CHALLENGES: Record<'easy' | 'medium' | 'hard', Challenge[]> = {
         { input: [[1, 8, 6, 2, 5, 4, 8, 3, 7]], expectedOutput: 49 },
         { input: [[1, 1]], expectedOutput: 1 },
       ],
+      examples: [
+        { input: 'height = [1,8,6,2,5,4,8,3,7]', output: '49' },
+      ],
       timeLimit: 40,
       baseReward: 180,
     },
@@ -171,6 +180,9 @@ export const CHALLENGES: Record<'easy' | 'medium' | 'hard', Challenge[]> = {
         { input: [[-1, 0, 1, 2, -1, -4]], expectedOutput: [[-1, -1, 2], [-1, 0, 1]] },
         { input: [[0, 1, 1]], expectedOutput: [] },
         { input: [[0, 0, 0]], expectedOutput: [[0, 0, 0]] },
+      ],
+      examples: [
+        { input: 'nums = [-1,0,1,2,-1,-4]', output: '[[-1,-1,2],[-1,0,1]]' },
       ],
       timeLimit: 50,
       baseReward: 220,
@@ -194,6 +206,9 @@ export const CHALLENGES: Record<'easy' | 'medium' | 'hard', Challenge[]> = {
         { input: [[1, 3], [2]], expectedOutput: 2.0 },
         { input: [[1, 2], [3, 4]], expectedOutput: 2.5 },
       ],
+      examples: [
+        { input: 'nums1 = [1,3], nums2 = [2]', output: '2.0' },
+      ],
       timeLimit: 60,
       baseReward: 400,
     },
@@ -202,7 +217,7 @@ export const CHALLENGES: Record<'easy' | 'medium' | 'hard', Challenge[]> = {
       title: 'Merge k Sorted Lists',
       description: 'You are given an array of k linked-lists lists, each linked-list is sorted in ascending order. Merge all the linked-lists into one sorted linked-list and return it.',
       difficulty: 'hard',
-      category: 'linked-lists',
+      category: 'arrays',
       template: `function mergeKLists(lists) {
   // Merge k sorted linked lists
   // Return merged sorted list
@@ -212,6 +227,9 @@ export const CHALLENGES: Record<'easy' | 'medium' | 'hard', Challenge[]> = {
       testCases: [
         { input: [[[1, 4, 5], [1, 3, 4], [2, 6]]], expectedOutput: [1, 1, 2, 3, 4, 4, 5, 6] },
         { input: [[]], expectedOutput: [] },
+      ],
+      examples: [
+        { input: 'lists = [[1,4,5],[1,3,4],[2,6]]', output: '[1,1,2,3,4,4,5,6]' },
       ],
       timeLimit: 60,
       baseReward: 450,
@@ -231,6 +249,9 @@ export const CHALLENGES: Record<'easy' | 'medium' | 'hard', Challenge[]> = {
       testCases: [
         { input: [[0, 1, 0, 2, 1, 0, 1, 3, 2, 1, 2, 1]], expectedOutput: 6 },
         { input: [[4, 2, 0, 3, 2, 5]], expectedOutput: 9 },
+      ],
+      examples: [
+        { input: 'height = [0,1,0,2,1,0,1,3,2,1,2,1]', output: '6' },
       ],
       timeLimit: 55,
       baseReward: 420,

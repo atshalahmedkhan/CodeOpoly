@@ -174,7 +174,6 @@ export default function TraditionalMonopolyBoard({
         } : isLanded ? {
           scale: [1, 1.05, 1],
         } : {}}
-        transition={{ duration: 0.6, repeat: (isGlowing || isLanded) ? Infinity : 0 }}
         onClick={() => onTileClick(property)}
         className="cursor-pointer transition-all duration-300 relative group"
         style={propertyStyle}
@@ -184,7 +183,7 @@ export default function TraditionalMonopolyBoard({
           scale: 1.08,
           zIndex: 20,
         }}
-        transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 25, duration: 0.6, repeat: (isGlowing || isLanded) ? Infinity : 0 }}
       >
         {/* Colored bar at top */}
         <div 
