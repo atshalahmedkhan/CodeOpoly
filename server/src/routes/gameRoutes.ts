@@ -1,9 +1,9 @@
 import express from 'express';
-import { Game } from '../models/Game.js';
+import { Game, IGame } from '../models/Game.js';
 import { Problem } from '../models/Problem.js';
 import { generateRoomCode } from '../utils/roomCode.js';
 import { initializeBoard } from '../utils/boardInitializer.js';
-import { saveGame, findGameById, findGameByRoomCode, updateGame } from '../utils/memoryStore.js';
+import { saveGame, findGameById, findGameByRoomCode, updateGame, GameData } from '../utils/memoryStore.js';
 import mongoose from 'mongoose';
 
 const router = express.Router();
@@ -11,6 +11,19 @@ const router = express.Router();
 // Check if MongoDB is connected (function to check dynamically)
 function useMongoDB() {
   return mongoose.connection.readyState === 1;
+}
+
+// Type guard to check if game is a Mongoose document
+function isMongooseDocument(game: IGame | GameData | null): game is IGame {
+  return game !== null && 'save' in game && typeof (game as any).save === 'function';
+}
+
+// Helper to get game ID
+function getGameId(game: IGame | GameData): string {
+  if (isMongooseDocument(game)) {
+    return (game._id as any).toString();
+  }
+  return game._id;
 }
 
 // Create a new game room
@@ -51,7 +64,7 @@ router.post('/games/create', async (req, res) => {
       game = new Game(gameData);
       await game.save();
       res.json({
-        gameId: game._id.toString(),
+        gameId: (game._id as any).toString(),
         roomCode: game.roomCode,
         playerId: game.players[0].id,
       });
@@ -118,14 +131,14 @@ router.post('/games/join', async (req, res) => {
 
     game.players.push(newPlayer);
     
-    if (useMongoDB()) {
+    if (isMongooseDocument(game)) {
       await game.save();
     } else {
-      updateGame(game._id.toString ? game._id.toString() : game._id, game);
+      updateGame(game._id, game);
     }
 
     res.json({
-      gameId: game._id.toString ? game._id.toString() : game._id,
+      gameId: getGameId(game),
       roomCode: game.roomCode,
       playerId: newPlayer.id,
     });

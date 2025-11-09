@@ -16,7 +16,7 @@ export interface IProperty {
   isRailroad?: boolean;
   isUtility?: boolean;
   isSpecial?: boolean;
-  specialType?: 'go' | 'jail' | 'free-parking' | 'go-to-jail' | 'chance' | 'community-chest';
+  specialType?: 'go' | 'jail' | 'free-parking' | 'go-to-jail' | 'chance' | 'community-chest' | 'tax';
 }
 
 export interface IPlayer {

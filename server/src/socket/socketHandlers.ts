@@ -1,13 +1,18 @@
 import { Server, Socket } from 'socket.io';
-import { Game } from '../models/Game.js';
+import { Game, IGame } from '../models/Game.js';
 import { Problem } from '../models/Problem.js';
 import { executeCode } from '../services/judge0Service.js';
-import { findGameById, updateGame } from '../utils/memoryStore.js';
+import { findGameById, updateGame, GameData } from '../utils/memoryStore.js';
 import { getRandomChanceCard, getRandomCommunityChestCard, type DebuggingCard } from '../utils/debuggingCards.js';
 import mongoose from 'mongoose';
 
 function useMongoDB() {
   return mongoose.connection.readyState === 1;
+}
+
+// Type guard to check if game is a Mongoose document
+function isMongooseDocument(game: IGame | GameData | null): game is IGame {
+  return game !== null && 'save' in game && typeof (game as any).save === 'function';
 }
 
 function isValidObjectId(id: string): boolean {
@@ -45,7 +50,7 @@ async function endPlayerTurn(game: any, gameId: string, io: Server) {
   console.log(`🔄 Turn switching: ${previousPlayer} → ${nextPlayer} (Turn #${game.turnNumber})`);
 
   try {
-    if (useMongoDB()) {
+    if (isMongooseDocument(game)) {
       await game.save();
     } else {
       updateGame(gameId, game);
@@ -59,7 +64,7 @@ async function endPlayerTurn(game: any, gameId: string, io: Server) {
 
     // Broadcast updated game state to all players
     const gameState = {
-      ...game.toObject ? game.toObject() : game,
+      ...(isMongooseDocument(game) ? game.toObject() : game),
       boardState: game.boardState || [],
       players: game.players || [],
     };
@@ -86,7 +91,7 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
       const player = game.players.find((p: any) => p.id === playerId);
       if (player) {
         player.socketId = socket.id;
-        if (useMongoDB()) {
+        if (isMongooseDocument(game)) {
           await game.save();
         } else {
           updateGame(gameId, game);
@@ -98,7 +103,7 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
       
       // Send current game state to the joining player
       const gameState = {
-        ...game.toObject ? game.toObject() : game,
+        ...(isMongooseDocument(game) ? game.toObject() : game),
         boardState: game.boardState || [],
         players: game.players || [],
       };
@@ -148,7 +153,7 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
         player.money += 200; // Pass Go, collect $200
       }
 
-      if (useMongoDB()) {
+      if (isMongooseDocument(game)) {
         await game.save();
       } else {
         updateGame(gameId, game);
@@ -168,7 +173,7 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
         // Handle Debugging Card System (Chance/Community Chest)
         if (property.specialType === 'chance') {
           const card = getRandomChanceCard();
-          applyCardEffect(game, player, card, io, gameId);
+          await applyCardEffect(game, player, card, io, gameId);
           socket.emit('debugging-card-drawn', {
             card,
             playerId,
@@ -176,7 +181,7 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
           });
         } else if (property.specialType === 'community-chest') {
           const card = getRandomCommunityChestCard();
-          applyCardEffect(game, player, card, io, gameId);
+          await applyCardEffect(game, player, card, io, gameId);
           socket.emit('debugging-card-drawn', {
             card,
             playerId,
@@ -233,7 +238,7 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
       }
       player.properties.push(propertyId);
 
-      if (useMongoDB()) {
+      if (isMongooseDocument(game)) {
         await game.save();
       } else {
         updateGame(gameId, game);
@@ -303,7 +308,7 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
         status: 'active',
       };
 
-      if (useMongoDB()) {
+      if (isMongooseDocument(game)) {
         await game.save();
       } else {
         updateGame(gameId, game);
@@ -367,7 +372,7 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
         }
       }
 
-      if (useMongoDB()) {
+      if (isMongooseDocument(game)) {
         await game.save();
       } else {
         updateGame(gameId, game);
@@ -429,7 +434,7 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
       player.money -= rent;
       owner.money += rent;
 
-      if (useMongoDB()) {
+      if (isMongooseDocument(game)) {
         await game.save();
       } else {
         updateGame(gameId, game);
@@ -482,7 +487,7 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
       property.houses += 1;
       player.money -= houseCost;
 
-      if (useMongoDB()) {
+      if (isMongooseDocument(game)) {
         await game.save();
       } else {
         updateGame(gameId, game);
@@ -513,7 +518,7 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
 
       game.status = 'finished';
       
-      if (useMongoDB()) {
+      if (isMongooseDocument(game)) {
         await game.save();
       } else {
         updateGame(gameId, game);
@@ -537,7 +542,7 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
 
       // Ensure boardState exists and is properly formatted
       const gameState = {
-        ...game.toObject ? game.toObject() : game,
+        ...(isMongooseDocument(game) ? game.toObject() : game),
         boardState: game.boardState || [],
         players: game.players || [],
       };
@@ -570,19 +575,20 @@ async function handleDuelEnd(game: any, io: Server) {
 
   game.activeDuel = undefined;
   
-  if (useMongoDB()) {
+  const gameIdStr = isMongooseDocument(game) ? (game._id as any).toString() : game._id;
+  
+  if (isMongooseDocument(game)) {
     await game.save();
   } else {
-    updateGame(game._id.toString(), game);
+    updateGame(gameIdStr, game);
   }
-
-  io.to(game._id.toString()).emit('duel-ended', {
+  io.to(gameIdStr).emit('duel-ended', {
     winner: duel.status === 'challenger-won' ? duel.challengerId : duel.defenderId,
     result: duel.status,
   });
 }
 
-function applyCardEffect(game: any, player: any, card: DebuggingCard, io: Server, gameId: string) {
+async function applyCardEffect(game: any, player: any, card: DebuggingCard, io: Server, gameId: string) {
   if (card.effect.money) {
     player.money += card.effect.money;
     if (card.effect.money > 0) {
@@ -604,8 +610,8 @@ function applyCardEffect(game: any, player: any, card: DebuggingCard, io: Server
     });
   }
   
-  if (useMongoDB()) {
-    game.save();
+  if (isMongooseDocument(game)) {
+    await game.save();
   } else {
     updateGame(gameId, game);
   }

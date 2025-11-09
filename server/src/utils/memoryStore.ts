@@ -1,5 +1,5 @@
 // Temporary in-memory store for games (no MongoDB required)
-interface GameData {
+export interface GameData {
   _id: string;
   roomCode: string;
   status: string;
