@@ -10,6 +10,7 @@ export interface GameData {
   lastActivity?: Date;
   boardState: any[];
   activeDuel?: any;
+  pendingChallenges?: Record<string, { challengeId: string; propertyId: string }>;
 }
 
 const games = new Map<string, GameData>();
@@ -26,6 +27,7 @@ export function saveGame(game: any): GameData {
     lastActivity: new Date(),
     boardState: game.boardState,
     activeDuel: game.activeDuel,
+    pendingChallenges: game.pendingChallenges || {},
   };
   games.set(gameData._id, gameData);
   return gameData;
@@ -92,5 +94,3 @@ export function cleanInactiveGames(waitingTtlMs = 30 * 60 * 1000, finishedTtlMs 
 export function getAllGames(): GameData[] {
   return Array.from(games.values());
 }
-
-

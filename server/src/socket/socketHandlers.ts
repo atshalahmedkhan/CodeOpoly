@@ -3,6 +3,7 @@ import { Game } from '../models/Game.js';
 import { findGameById, updateGame, deleteGame } from '../utils/memoryStore.js';
 import { getRandomChanceCard, getRandomCommunityChestCard, type DebuggingCard } from '../utils/debuggingCards.js';
 import { recordGameResult, recordProblemSolved, recordTurnCompleted } from '../routes/authRoutes.js';
+import { challengeForTier, publicChallenge } from '../code/problems.js';
 import mongoose from 'mongoose';
 
 function computeWinnerName(players: any[]): string {
@@ -19,7 +20,7 @@ function isValidObjectId(id: string): boolean {
   return mongoose.Types.ObjectId.isValid(id) && /^[0-9a-fA-F]{24}$/.test(id);
 }
 
-async function getGameById(gameId: string) {
+export async function getGameById(gameId: string) {
   if (useMongoDB() && isValidObjectId(gameId)) {
     return await Game.findById(gameId);
   } else {
@@ -27,7 +28,7 @@ async function getGameById(gameId: string) {
   }
 }
 
-async function saveGameState(gameId: string, game: any) {
+export async function saveGameState(gameId: string, game: any) {
   game.lastActivity = new Date();
   if (useMongoDB() && typeof game.save === 'function') {
     return await game.save();
@@ -36,7 +37,7 @@ async function saveGameState(gameId: string, game: any) {
   }
 }
 
-function serializeGameState(game: any) {
+export function serializeGameState(game: any) {
   return {
     ...(typeof game.toObject === 'function' ? game.toObject() : game),
     _id: game._id ? String(game._id) : game.id,
@@ -45,7 +46,7 @@ function serializeGameState(game: any) {
   };
 }
 
-async function endPlayerTurn(game: any, gameId: string, io: Server) {
+export async function endPlayerTurn(game: any, gameId: string, io: Server) {
   if (!game || !game.players || game.players.length === 0) {
     console.error('❌ Cannot end turn: Invalid game or no players');
     return;
@@ -232,11 +233,20 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
             property: property.name,
           });
         } else {
+          let challenge;
+          if (!property.ownerId && property.price > 0) {
+            const selected = challengeForTier(property.color || 'brown');
+            game.pendingChallenges = game.pendingChallenges || {};
+            game.pendingChallenges[playerId] = { challengeId: selected.id, propertyId: property.id };
+            await saveGameState(gameId, game);
+            challenge = publicChallenge(selected);
+          }
           io.to(gameId).emit('landed-on-space', {
             playerId,
             property,
             canBuy: !property.ownerId && property.price > 0,
             mustPayRent: property.ownerId && property.ownerId !== playerId,
+            challenge,
           });
         }
       }
@@ -246,63 +256,10 @@ export function setupSocketHandlers(io: Server, socket: Socket) {
     }
   });
 
-  // Buy property (problem was solved client-side / on server)
-  socket.on('buy-property', async ({ gameId, playerId, propertyId }) => {
-    try {
-      const game: any = await getGameById(gameId);
-      
-      if (!game) {
-        socket.emit('error', { message: 'Game not found' });
-        return;
-      }
-
-      const property = game.boardState.find((p: any) => p.id === propertyId);
-      if (!property || property.ownerId || property.price === 0) {
-        socket.emit('error', { message: 'Cannot buy this property' });
-        return;
-      }
-
-      const player = game.players.find((p: any) => p.id === playerId);
-      if (!player || player.money < property.price) {
-        socket.emit('error', { message: 'Not enough money' });
-        return;
-      }
-
-      // Property purchase successful
-      property.ownerId = playerId;
-      property.houses = 1; // First solution automatically added
-      player.money -= property.price;
-      if (!player.properties) {
-        player.properties = [];
-      }
-      player.properties.push(propertyId);
-
-      await saveGameState(gameId, game);
-
-      // Persist real-time problem solved stat for this player!
-      if (player.name) {
-        recordProblemSolved(player.name).catch(err => console.error('Error recording problem solved:', err));
-      }
-
-      const playerName = player.name || 'Player';
-      io.to(gameId).emit('property-bought', {
-        playerId,
-        playerName,
-        propertyId,
-        propertyName: property.name,
-      });
-
-      // Automatically end turn after buying property
-      console.log(`💰 Property bought by ${playerName}, ending turn...`);
-      try {
-        await endPlayerTurn(game, gameId, io);
-      } catch (turnError) {
-        console.error('Error ending turn after property purchase:', turnError);
-      }
-    } catch (error) {
-      console.error('Error buying property:', error);
-      socket.emit('error', { message: 'Failed to buy property' });
-    }
+  // Legacy client-authoritative purchase path is intentionally disabled.
+  socket.on('buy-property', ({ gameId, playerId, propertyId }) => {
+    void gameId; void playerId; void propertyId;
+    socket.emit('error', { message: 'Solve and submit the server challenge before purchasing.' });
   });
 
   // Challenge to code duel
@@ -644,5 +601,3 @@ function calculateRent(property: any): number {
   
   return Math.round(rent);
 }
-
-

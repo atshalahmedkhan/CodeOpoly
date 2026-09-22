@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Editor from '@monaco-editor/react';
 import { Loader2 } from 'lucide-react';
-import { executeCode } from '../services/judge0Service';
+import { runCode, submitCode, type CodeLanguage } from '../services/judge0Service';
 import { toast } from 'react-hot-toast';
 
 interface Problem {
@@ -18,11 +18,6 @@ interface Problem {
     cpp: string;
     java: string;
   };
-  testCases: Array<{
-    input: any[];
-    expectedOutput: any;
-    description?: string;
-  }>;
   examples?: Array<{
     input: string;
     output: string;
@@ -35,7 +30,9 @@ interface FullCodeChallengeModalProps {
   problem: Problem;
   propertyName: string;
   propertyPrice: number;
-  onSubmit: (code: string, language: string) => Promise<void>;
+  gameId: string;
+  playerId: string;
+  onSubmit: () => void;
   onGiveUp: () => void;
   timeLimit?: number;
 }
@@ -44,12 +41,16 @@ export default function FullCodeChallengeModal({
   problem,
   propertyName,
   propertyPrice,
+  gameId,
+  playerId,
   onSubmit,
   onGiveUp,
   timeLimit = 300,
 }: FullCodeChallengeModalProps) {
-  const [code, setCode] = useState(problem.functionSignatures.javascript);
-  const [language, setLanguage] = useState('javascript');
+  const [language, setLanguage] = useState<CodeLanguage>('javascript');
+  const [drafts, setDrafts] = useState<Record<CodeLanguage, string>>({ ...problem.functionSignatures });
+  const code = drafts[language];
+  const setCode = (value: string) => setDrafts(prev => ({ ...prev, [language]: value }));
   const [timeRemaining, setTimeRemaining] = useState(timeLimit);
   const [testResults, setTestResults] = useState<any[]>([]);
   const [isRunning, setIsRunning] = useState(false);
@@ -76,93 +77,30 @@ export default function FullCodeChallengeModal({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const request = { gameId, playerId, challengeId: problem.id, language, sourceCode: code };
+  const displayResult = (result: any) => setTestResults(result.tests?.length ? result.tests : [{ passed: false, error: result.message || result.status.replaceAll('_', ' ').toUpperCase() }]);
   const handleRunCode = async () => {
-    if (!code || code.trim().length === 0) {
-      toast.error('Please write some code before running!', { duration: 3000 });
-      return;
-    }
-
+    if (!code.trim()) return toast.error('Please write some code before running!');
     setIsRunning(true);
     try {
-      const results = await executeCode(code, language, problem.testCases);
-      setTestResults(results);
-      
-      const passedCount = results.filter(r => r.passed).length;
-      const totalTests = results.length;
-      
-      if (passedCount === totalTests) {
-        toast.success(`✅ All ${totalTests} test cases passed!`, { duration: 3000 });
-      } else {
-        toast.error(`❌ ${passedCount}/${totalTests} test cases passed`, { duration: 4000 });
-      }
-    } catch (error: any) {
-      console.error('Execution error:', error);
-      toast.error(`Execution Error: ${error.message || 'Failed to execute code'}`, { duration: 4000 });
-      setTestResults([{
-        passed: false,
-        input: [],
-        expected: null,
-        error: error.message || 'Failed to execute code',
-      }]);
-    } finally {
-      setIsRunning(false);
-    }
+      const result = await runCode(request);
+      displayResult(result);
+      result.allPassed ? toast.success('All public tests passed!') : toast.error(result.message || 'Some tests failed.');
+    } catch (error: any) { toast.error(error.message); setTestResults([]); }
+    finally { setIsRunning(false); }
   };
 
   const handleSubmit = async () => {
-    // Validate code is not empty
-    if (!code || code.trim().length === 0) {
-      toast.error('❌ Please write some code before submitting!', { duration: 4000 });
-      return;
-    }
-
-    // Check if code is just the function signature (no implementation)
-    const trimmedCode = code.trim();
-    const functionSignature = problem.functionSignatures?.[language as keyof typeof problem.functionSignatures] || '';
-    if (trimmedCode === functionSignature.trim() || trimmedCode.length < functionSignature.length + 10) {
-      toast.error('❌ Please implement the function! Empty or incomplete solutions are not accepted.', {
-        duration: 4000,
-      });
-      return;
-    }
-
+    if (!code.trim()) return toast.error('Please implement the function before submitting.');
     setIsSubmitting(true);
     try {
-      // Actually validate the code with test cases
-      const results = await executeCode(code, language, problem.testCases);
-      setTestResults(results);
-      
-      // Check if all tests passed
-      const allTestsPassed = results.every(result => result.passed);
-      const passedCount = results.filter(r => r.passed).length;
-      const totalTests = results.length;
-
-      if (!allTestsPassed) {
-        // Show failure notification
-        toast.error(
-          `❌ FAILED: Only ${passedCount}/${totalTests} test cases passed! Please fix your solution.`,
-          { duration: 5000 }
-        );
-        setIsSubmitting(false);
-        return; // Don't proceed with submission
-      }
-
-      // All tests passed - proceed with submission
-      toast.success(`✅ PASS: All ${totalTests} test cases passed! +${propertyPrice} Algo-Coins`, {
-        duration: 3000,
-      });
-      
-      // Wait a moment to show the success, then submit
-      setTimeout(() => {
-        onSubmit(code, language);
-      }, 1000);
-    } catch (error: any) {
-      console.error('Submission error:', error);
-      toast.error(`❌ Execution Error: ${error.message || 'Failed to execute code'}`, {
-        duration: 5000,
-      });
-      setIsSubmitting(false);
-    }
+      const result = await submitCode(request);
+      displayResult(result);
+      if (!result.allPassed) { toast.error(result.message || 'Submission failed.'); return; }
+      toast.success(`Challenge passed — ${propertyName} purchased!`);
+      onSubmit();
+    } catch (error: any) { toast.error(error.message); }
+    finally { setIsSubmitting(false); }
   };
 
   const difficultyColors = {
@@ -265,8 +203,7 @@ export default function FullCodeChallengeModal({
                 <button
                   key={lang}
                   onClick={() => {
-                    setLanguage(lang);
-                    setCode(problem.functionSignatures[lang as keyof typeof problem.functionSignatures] || '');
+                    setLanguage(lang as CodeLanguage);
                   }}
                   className={`px-4 py-2 rounded-lg text-sm font-mono transition-all ${
                     language === lang
@@ -335,9 +272,9 @@ export default function FullCodeChallengeModal({
                       </div>
                       {!result.passed && (
                         <div className="text-white/80 text-xs font-mono space-y-1 mt-2">
-                          <div className="text-cyan-300">Input: <span className="text-white">{JSON.stringify(result.input)}</span></div>
-                          <div className="text-green-300">Expected: <span className="text-white">{JSON.stringify(result.expected)}</span></div>
-                          <div className="text-yellow-300">Got: <span className="text-white">{JSON.stringify(result.actual !== undefined ? result.actual : 'undefined')}</span></div>
+                          <div className="text-cyan-300">Input: <span className="text-white">{result.input}</span></div>
+                          <div className="text-green-300">Expected: <span className="text-white">{result.expected}</span></div>
+                          <div className="text-yellow-300">Got: <span className="text-white">{result.actual ?? 'undefined'}</span></div>
                           {result.error && (
                             <div className="text-red-400 mt-1 font-semibold">❌ Error: {result.error}</div>
                           )}

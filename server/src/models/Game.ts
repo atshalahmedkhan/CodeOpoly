@@ -32,6 +32,7 @@ export interface IPlayer {
 }
 
 export interface IGame extends Document {
+  pendingChallenges?: Record<string, { challengeId: string; propertyId: string }>;
   roomCode: string;
   status: 'waiting' | 'in-progress' | 'finished';
   players: IPlayer[];
@@ -93,6 +94,7 @@ const GameSchema = new Schema<IGame>({
   startTime: Date,
   lastActivity: { type: Date, default: Date.now },
   boardState: [PropertySchema],
+  pendingChallenges: { type: Schema.Types.Mixed, default: {} },
   activeDuel: {
     id: String,
     challengerId: String,
@@ -107,4 +109,3 @@ const GameSchema = new Schema<IGame>({
 });
 
 export const Game = mongoose.model<IGame>('Game', GameSchema);
-

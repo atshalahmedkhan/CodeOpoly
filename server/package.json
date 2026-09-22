@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
+    "test": "tsx --test src/**/*.test.ts",
     "start": "node dist/index.js"
   },
   "dependencies": {
@@ -25,4 +26,3 @@
     "tsx": "^4.7.0"
   }
 }
-

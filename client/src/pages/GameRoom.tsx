@@ -19,8 +19,6 @@ import { useGameEffects } from '../hooks/useGameEffects';
 import DiceParticles from '../components/particles/DiceParticles';
 import ConfettiParticles from '../components/particles/ConfettiParticles';
 import GoldenRingEffect from '../components/particles/GoldenRingEffect';
-import { getProblemForProperty, getRandomProblemByDifficulty } from '../data/problemBank';
-import { executeCode } from '../services/judge0Service';
 import { getSocketUrl, getApiUrl, getSession } from '../lib/session';
 import type { Problem } from '../data/problemBank';
 
@@ -490,11 +488,7 @@ export default function GameRoom() {
       
       if (data.canBuy) {
         setActionType('landed-unowned');
-        const difficulty = getDifficultyForProperty(property);
-        const problem = getProblemForProperty(property) || getRandomProblemByDifficulty(difficulty);
-        if (problem) {
-          setCurrentProblem(problem);
-        }
+        if (data.challenge) setCurrentProblem(data.challenge);
         return;
       }
 
@@ -710,101 +704,14 @@ export default function GameRoom() {
     socket.emit('roll-dice', { gameId, playerId });
   };
 
-  const handleSolveAndBuy = async (code: string, language: string) => {
-    if (!currentProblem || !landedProperty || !socket || !gameId || !playerId) return;
-
-    // Validate code is not empty
-    if (!code || code.trim().length === 0) {
-      toast.error('❌ Please write some code before submitting!', {
-        duration: 4000,
-        icon: '⚠️',
-      });
-      return;
-    }
-
-    // Check if code is just the function signature (no implementation)
-    const trimmedCode = code.trim();
-    const functionSignature = currentProblem.functionSignatures?.[language as keyof typeof currentProblem.functionSignatures] || '';
-    if (trimmedCode === functionSignature.trim() || trimmedCode.length < functionSignature.length + 10) {
-      toast.error('❌ Please implement the function! Empty or incomplete solutions are not accepted.', {
-        duration: 4000,
-        icon: '⚠️',
-      });
-      return;
-    }
-
-    try {
-      // Actually validate the code with test cases
-      const testResults = await executeCode(code, language, currentProblem.testCases);
-      
-      // Check if all tests passed
-      const allTestsPassed = testResults.every(result => result.passed);
-      const passedCount = testResults.filter(r => r.passed).length;
-      const totalTests = testResults.length;
-
-      if (!allTestsPassed) {
-        // Show failure notification with details
-        toast.error(
-          `❌ FAILED: Only ${passedCount}/${totalTests} test cases passed!`, 
-          {
-            duration: 5000,
-            icon: '❌',
-          }
-        );
-
-        // Show detailed error messages
-        const failedTests = testResults.filter(r => !r.passed);
-        failedTests.forEach((test, idx) => {
-          setTimeout(() => {
-            toast.error(
-              `Test ${idx + 1} Failed: Expected ${JSON.stringify(test.expected)}, got ${JSON.stringify(test.actual)}${test.error ? ` - ${test.error}` : ''}`,
-              { duration: 4000 }
-            );
-          }, idx * 500);
-        });
-
-        return; // Don't proceed with purchase
-      }
-
-      // All tests passed - proceed with purchase
+  const handleSolveAndBuy = () => {
+    if (!currentProblem || !landedProperty || !playerId) return;
     const playerName = getPlayerNameById(playersRef.current, playerId);
-    const coinsEarned = landedProperty.price;
-    
-    // Show success notification
-      toast.success(`✅ PASS: All ${totalTests} test cases passed! +${coinsEarned} Algo-Coins`, {
-      duration: 4000,
-      icon: '🎉',
-    });
-
-    addEvent({
-      type: 'purchase',
-      message: `✅ ${playerName} solved "${currentProblem.title}"! +${coinsEarned} A-C`,
-      player: playerId,
-    });
-
-    // Automatically deduct cost and buy property
-    socket.emit('buy-property', {
-      gameId,
-      playerId,
-      propertyId: landedProperty.id,
-      code,
-      language,
-    });
-
-    // Close modal after a brief delay
-    setTimeout(() => {
-      setShowChallengeModal(false);
-      setCurrentProblem(null);
-      setLandedProperty(null);
-      setActionType(null);
-    }, 1500);
-    } catch (error: any) {
-      console.error('Code execution error:', error);
-      toast.error(`❌ Execution Error: ${error.message || 'Failed to execute code'}`, {
-        duration: 5000,
-        icon: '⚠️',
-      });
-    }
+    addEvent({ type: 'purchase', message: `✅ ${playerName} solved "${currentProblem.title}"!`, player: playerId });
+    setShowChallengeModal(false);
+    setCurrentProblem(null);
+    setLandedProperty(null);
+    setActionType(null);
   };
 
   const handlePayRent = () => {
@@ -845,14 +752,7 @@ export default function GameRoom() {
   };
 
   const handlePropertyCardBuy = () => {
-    if (!currentProblem) {
-      // Get problem if not already set
-      const difficulty = getDifficultyForProperty(landedProperty);
-      const problem = getProblemForProperty(landedProperty) || getRandomProblemByDifficulty(difficulty);
-      if (problem) {
-        setCurrentProblem(problem);
-      }
-    }
+    if (!currentProblem) { toast.error('The server did not assign a challenge for this property.'); return; }
     setShowPropertyCardModal(false);
     setShowChallengeModal(true);
   };
@@ -1502,6 +1402,8 @@ export default function GameRoom() {
           problem={currentProblem}
           propertyName={landedProperty.name}
           propertyPrice={landedProperty.price}
+          gameId={gameId!}
+          playerId={playerId!}
           onSubmit={handleSolveAndBuy}
           onGiveUp={() => {
             setShowChallengeModal(false);

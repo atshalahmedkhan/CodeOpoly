@@ -9,6 +9,7 @@ import authRoutes from './routes/authRoutes.js';
 import { Game } from './models/Game.js';
 import { setupSocketHandlers } from './socket/socketHandlers.js';
 import { cleanInactiveGames } from './utils/memoryStore.js';
+import { createCodeRoutes } from './routes/codeRoutes.js';
 
 dotenv.config();
 
@@ -54,7 +55,7 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
 }));
-app.use(express.json());
+app.use(express.json({ limit: '128kb' }));
 
 // Root health check for deploy orchestrators
 app.get('/health', (_req, res) => {
@@ -69,6 +70,7 @@ app.get('/health', (_req, res) => {
 // Routes
 app.use('/api', authRoutes);
 app.use('/api', gameRoutes);
+app.use('/api/code', createCodeRoutes(io));
 
 // MongoDB connection
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/codeopoly';
@@ -129,5 +131,3 @@ httpServer.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📡 Socket.io ready for connections`);
 });
-
-

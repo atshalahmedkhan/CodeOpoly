@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Editor from '@monaco-editor/react';
 import { Loader2, Trophy, X } from 'lucide-react';
 import { Problem } from '../data/problemBank';
-import { executeCode } from '../services/judge0Service';
 import { toast } from 'react-hot-toast';
 
 interface CodeDuelModalProps {
@@ -76,86 +75,9 @@ export default function CodeDuelModal({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleRunCode = async () => {
-    if (!code || code.trim().length === 0) {
-      toast.error('Please write some code before running!', { duration: 3000 });
-      return;
-    }
+  const handleRunCode = async () => { toast.error('Server-authoritative duel judging is not available yet.'); };
 
-    setIsRunning(true);
-    try {
-      const results = await executeCode(code, language, problem.testCases);
-      setTestResults(results);
-      const passed = results.every(r => r.passed);
-      const passedCount = results.filter(r => r.passed).length;
-      const totalTests = results.length;
-      setAllTestsPassed(passed);
-      
-      if (passed) {
-        toast.success(`✅ All ${totalTests} test cases passed!`, { duration: 3000 });
-      } else {
-        toast.error(`❌ ${passedCount}/${totalTests} test cases passed`, { duration: 4000 });
-      }
-    } catch (error: any) {
-      console.error('Execution error:', error);
-      toast.error(`Execution Error: ${error.message || 'Failed to execute code'}`, { duration: 4000 });
-    } finally {
-      setIsRunning(false);
-    }
-  };
-
-  const handleSubmit = async () => {
-    // Validate code is not empty
-    if (!code || code.trim().length === 0) {
-      toast.error('❌ Please write some code before submitting!', { duration: 4000 });
-      return;
-    }
-
-    // Check if code is just the function signature (no implementation)
-    const trimmedCode = code.trim();
-    const functionSignature = problem.functionSignatures?.[language as keyof typeof problem.functionSignatures] || '';
-    if (trimmedCode === functionSignature.trim() || trimmedCode.length < functionSignature.length + 10) {
-      toast.error('❌ Please implement the function! Empty or incomplete solutions are not accepted.', {
-        duration: 4000,
-      });
-      return;
-    }
-
-    setIsSubmitting(true);
-    const startTime = Date.now();
-    try {
-      const results = await executeCode(code, language, problem.testCases);
-      const endTime = Date.now();
-      const timeTaken = Math.floor((endTime - startTime) / 1000); // seconds
-      
-      setTestResults(results);
-      const passed = results.every(r => r.passed);
-      const passedCount = results.filter(r => r.passed).length;
-      const totalTests = results.length;
-      
-      if (passed) {
-        setStatus('completed');
-        // Time-based scoring: <10s = full reward, otherwise scaled
-        const timeBonus = timeTaken < 10 ? 1.0 : Math.max(0.5, 1.0 - (timeTaken - 10) / 100);
-        setAllTestsPassed(true);
-        toast.success(`✅ All ${totalTests} test cases passed!`, { duration: 3000 });
-        // Notify parent with time taken for scoring
-        onWin();
-      } else {
-        setStatus('failed');
-        setAllTestsPassed(false);
-        toast.error(`❌ FAILED: Only ${passedCount}/${totalTests} test cases passed!`, { duration: 5000 });
-        onLose();
-      }
-    } catch (error: any) {
-      setStatus('failed');
-      setAllTestsPassed(false);
-      toast.error(`❌ Execution Error: ${error.message || 'Failed to execute code'}`, { duration: 5000 });
-      onLose();
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+  const handleSubmit = async () => { toast.error('Server-authoritative duel judging is not available yet.'); };
 
   return (
     <motion.div
@@ -352,4 +274,3 @@ export default function CodeDuelModal({
     </motion.div>
   );
 }
-
