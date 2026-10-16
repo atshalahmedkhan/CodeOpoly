@@ -1,16 +1,21 @@
+import { randomInt } from 'node:crypto';
 import { Server, Socket } from 'socket.io';
-import { Game } from '../models/Game.js';
-import { findGameById, updateGame, deleteGame } from '../utils/memoryStore.js';
-import { getRandomChanceCard, getRandomCommunityChestCard, type DebuggingCard } from '../utils/debuggingCards.js';
-import { recordGameResult, recordProblemSolved, recordTurnCompleted } from '../routes/authRoutes.js';
-import { challengeForTier, publicChallenge } from '../code/problems.js';
 import mongoose from 'mongoose';
+import { Game } from '../models/Game.js';
+import { findGameById, updateGame, deleteGame, getAllGames } from '../utils/memoryStore.js';
+import { getRandomChanceCard, getRandomCommunityChestCard, type DebuggingCard } from '../utils/debuggingCards.js';
+import { recordGameResult, recordTurnCompleted } from '../routes/authRoutes.js';
+import { challengeForTier, publicChallenge } from '../code/problems.js';
+import { withGameLock } from '../utils/gameLock.js';
+import { publicPlayers, tokenMatches } from '../utils/playerAuth.js';
 
-function computeWinnerName(players: any[]): string {
-  if (!players?.length) return '';
-  const netWorth = (p: any) => (p.money || 0) + (p.properties?.length || 0) * 100;
-  return players.reduce((best, p) => (netWorth(p) > netWorth(best) ? p : best)).name;
-}
+const GAME_DURATION_MS = (Number(process.env.GAME_DURATION_MINUTES) || 45) * 60 * 1000;
+// Indirection so tests can force specific rolls.
+export const dice = { roll: () => randomInt(1, 7) };
+
+const JAIL_POSITION = 10;
+const JAIL_FINE = 50;
+const MAX_JAIL_TURNS = 3;
 
 function useMongoDB() {
   return mongoose.connection.readyState === 1;
@@ -38,12 +43,86 @@ export async function saveGameState(gameId: string, game: any) {
 }
 
 export function serializeGameState(game: any) {
+  const plain = typeof game.toObject === 'function' ? game.toObject() : { ...game };
   return {
-    ...(typeof game.toObject === 'function' ? game.toObject() : game),
+    ...plain,
     _id: game._id ? String(game._id) : game.id,
-    boardState: game.boardState || [],
-    players: game.players || [],
+    boardState: plain.boardState || [],
+    players: publicPlayers(game.players),
   };
+}
+
+// Mongoose does not track in-place edits of Mixed fields; without this the
+// change is silently dropped on save().
+function touchMixed(game: any) {
+  if (typeof game.markModified === 'function') {
+    game.markModified('pendingChallenges');
+    game.markModified('rentDue');
+  }
+}
+
+const idOf = (game: any): string => (game._id ? String(game._id) : game.id);
+const activePlayers = (game: any) => game.players.filter((p: any) => !p.bankrupt);
+
+function netWorth(game: any, player: any): number {
+  const owned = (game.boardState || []).filter((p: any) => p.ownerId === player.id);
+  return (player.money || 0) + owned.reduce((sum: number, p: any) => sum + (p.price || 0) + (p.houses || 0) * (p.houseCost || 0), 0);
+}
+
+function computeWinnerName(game: any): string {
+  const pool = activePlayers(game).length ? activePlayers(game) : game.players;
+  if (!pool.length) return '';
+  return pool.reduce((best: any, p: any) => (netWorth(game, p) > netWorth(game, best) ? p : best)).name;
+}
+
+function declareBankrupt(game: any, player: any, creditor?: any) {
+  player.bankrupt = true;
+  player.money = 0;
+  for (const prop of game.boardState) {
+    if (prop.ownerId !== player.id) continue;
+    if (creditor) {
+      prop.ownerId = creditor.id;
+      creditor.properties = creditor.properties || [];
+      creditor.properties.push(prop.id);
+    } else {
+      prop.ownerId = undefined;
+      prop.houses = 0;
+    }
+  }
+  player.properties = [];
+}
+
+// Debits a player (to the bank or to a creditor). Never leaves negative money:
+// a player who cannot cover the debt pays what they have and goes bankrupt.
+function charge(game: any, player: any, amount: number, creditor?: any) {
+  const due = Math.max(0, Math.round(amount));
+  if (player.money >= due) {
+    player.money -= due;
+    if (creditor) creditor.money += due;
+    return { paid: due, bankrupt: false };
+  }
+  const paid = Math.max(0, player.money);
+  if (creditor) creditor.money += paid;
+  declareBankrupt(game, player, creditor);
+  return { paid, bankrupt: true };
+}
+
+// Idempotent: results are recorded exactly once.
+export async function finishGame(game: any, gameId: string, io: Server) {
+  if (game.status === 'finished') return;
+  game.status = 'finished';
+  game.winnerName = computeWinnerName(game);
+  game.rentDue = null;
+  game.pendingChallenges = {};
+  touchMixed(game);
+  await saveGameState(gameId, game);
+  await recordGameResult(game.players, game.winnerName);
+  io.to(gameId).emit('game-over', { gameId, winnerName: game.winnerName });
+  io.to(gameId).emit('game-state', serializeGameState(game));
+}
+
+function clockExpired(game: any): boolean {
+  return game.status === 'in-progress' && !!game.endsAt && Date.now() >= new Date(game.endsAt).getTime();
 }
 
 export async function endPlayerTurn(game: any, gameId: string, io: Server) {
@@ -51,544 +130,385 @@ export async function endPlayerTurn(game: any, gameId: string, io: Server) {
     console.error('❌ Cannot end turn: Invalid game or no players');
     return;
   }
+  if (game.status === 'finished') return;
 
   const currentIndex = game.players.findIndex((p: any) => p.id === game.currentTurn);
-  
-  if (currentIndex === -1) {
-    console.error(`❌ Cannot end turn: Current player ${game.currentTurn} not found in players list`);
+  if (currentIndex === -1 && activePlayers(game).length) {
+    game.currentTurn = activePlayers(game)[0].id;
+  }
+
+  if (activePlayers(game).length <= 1 || clockExpired(game)) {
+    await finishGame(game, gameId, io);
     return;
   }
 
-  const previousPlayer = game.players[currentIndex].name;
-  const nextIndex = (currentIndex + 1) % game.players.length;
-  const nextPlayer = game.players[nextIndex].name;
-  
-  // Track that the previous player finished a round/turn
-  recordTurnCompleted(previousPlayer).catch(err => console.error('Error updating turn stat:', err));
+  const previous = game.players[Math.max(currentIndex, 0)];
+  let nextIndex = currentIndex;
+  do {
+    nextIndex = (nextIndex + 1) % game.players.length;
+  } while (game.players[nextIndex].bankrupt);
 
+  recordTurnCompleted(previous.name).catch(err => console.error('Error updating turn stat:', err));
+
+  if (game.pendingChallenges) delete game.pendingChallenges[previous.id];
+  game.rentDue = null;
+  game.hasRolled = false;
+  touchMixed(game);
   game.currentTurn = game.players[nextIndex].id;
   game.turnNumber += 1;
 
-  console.log(`🔄 Turn switching: ${previousPlayer} → ${nextPlayer} (Turn #${game.turnNumber})`);
+  await saveGameState(gameId, game);
 
-  try {
-    await saveGameState(gameId, game);
+  io.to(gameId).emit('turn-ended', {
+    nextPlayerId: game.currentTurn,
+    nextPlayerName: game.players[nextIndex].name,
+    turnNumber: game.turnNumber,
+  });
+  io.to(gameId).emit('game-state', serializeGameState(game));
+}
 
-    io.to(gameId).emit('turn-ended', {
-      nextPlayerId: game.currentTurn,
-      nextPlayerName: game.players[nextIndex].name,
-      turnNumber: game.turnNumber,
+// Called on a timer: ends games whose clock has run out.
+export async function expireOverdueGames(io: Server) {
+  const candidates: any[] = useMongoDB()
+    ? await Game.find({ status: 'in-progress', endsAt: { $lt: new Date() } })
+    : getAllGames().filter(clockExpired);
+  for (const c of candidates) {
+    const id = idOf(c);
+    await withGameLock(id, async () => {
+      const game: any = await getGameById(id);
+      if (game && clockExpired(game)) await finishGame(game, id, io);
     });
-
-    const gameState = serializeGameState(game);
-    io.to(gameId).emit('game-state', gameState);
-    console.log(`✅ Turn ended successfully, next player: ${nextPlayer}`);
-  } catch (error) {
-    console.error('❌ Error in endPlayerTurn:', error);
-    throw error;
   }
 }
 
+type Ctx = { game: any; player: any; gameId: string; playerId: string };
+
 export function setupSocketHandlers(io: Server, socket: Socket) {
-  // Join game room
-  socket.on('join-game', async ({ gameId, playerId }) => {
-    try {
-      const game: any = await getGameById(gameId);
-      
-      if (!game) {
-        socket.emit('error', { message: 'Game not found' });
+  // Every post-join event is bound to the identity proven at join time; any
+  // playerId/gameId in the payload is ignored.
+  function onGame(event: string, fn: (ctx: Ctx, payload: any) => Promise<void>) {
+    socket.on(event, async (payload: any = {}) => {
+      const gameId: string | undefined = socket.data.gameId;
+      const playerId: string | undefined = socket.data.playerId;
+      if (!gameId || !playerId) {
+        socket.emit('error', { message: 'Join the game first' });
         return;
       }
+      try {
+        await withGameLock(gameId, async () => {
+          const game: any = await getGameById(gameId);
+          if (!game) return void socket.emit('error', { message: 'Game not found' });
+          const player = game.players.find((p: any) => p.id === playerId);
+          if (!player) return void socket.emit('error', { message: 'Player not found' });
+          await fn({ game, player, gameId, playerId }, payload || {});
+        });
+      } catch (error) {
+        console.error(`Error handling ${event}:`, error);
+        socket.emit('error', { message: `Failed to process ${event}` });
+      }
+    });
+  }
 
-      // Update player's socket ID
-      const player = game.players.find((p: any) => p.id === playerId);
-      if (player) {
+  socket.on('join-game', async ({ gameId, playerId, token } = {} as any) => {
+    try {
+      if (typeof gameId !== 'string' || typeof playerId !== 'string') {
+        socket.emit('error', { message: 'Invalid join request' });
+        return;
+      }
+      await withGameLock(gameId, async () => {
+        const game: any = await getGameById(gameId);
+        if (!game) return void socket.emit('error', { message: 'Game not found' });
+
+        const player = game.players.find((p: any) => p.id === playerId);
+        if (!player || !tokenMatches(player.token, token)) {
+          return void socket.emit('error', { message: 'Not authorised to join this game' });
+        }
+
+        if (socket.data.gameId && socket.data.gameId !== gameId) socket.leave(socket.data.gameId);
+        socket.data.gameId = gameId;
+        socket.data.playerId = playerId;
         player.socketId = socket.id;
         await saveGameState(gameId, game);
-      }
 
-      socket.join(gameId);
-      socket.emit('joined-game', { gameId, playerId });
-      
-      // Send current game state to the joining player
-      const gameState = serializeGameState(game);
-      socket.emit('game-state', gameState);
-      
-      // Notify other players and broadcast updated game state to all
-      socket.to(gameId).emit('player-joined', {
-        playerId,
-        playerName: player?.name,
-        playerAvatar: player?.avatar,
+        socket.join(gameId);
+        socket.emit('joined-game', { gameId, playerId });
+        const gameState = serializeGameState(game);
+        socket.to(gameId).emit('player-joined', { playerId, playerName: player.name, playerAvatar: player.avatar });
+        io.to(gameId).emit('game-state', gameState);
       });
-      
-      io.to(gameId).emit('game-state', gameState);
     } catch (error) {
       console.error('Error joining game:', error);
       socket.emit('error', { message: 'Failed to join game' });
     }
   });
 
-  // Leave / cancel game lobby
-  socket.on('leave-game', async ({ gameId, playerId }) => {
-    try {
-      const game: any = await getGameById(gameId);
-      if (!game) return;
+  onGame('leave-game', async ({ game, player, gameId, playerId }) => {
+    const index = game.players.findIndex((p: any) => p.id === playerId);
+    socket.leave(gameId);
+    socket.data.gameId = undefined;
+    socket.data.playerId = undefined;
 
-      const leavingPlayerIndex = game.players.findIndex((p: any) => p.id === playerId);
-      const isHost = leavingPlayerIndex === 0;
-
-      if (game.status === 'waiting' && (isHost || game.players.length <= 1)) {
-        // If host leaves or only 1 player was left, delete the game
-        if (useMongoDB() && isValidObjectId(gameId)) {
-          await Game.findByIdAndDelete(gameId);
-        } else {
-          deleteGame(gameId);
-        }
+    if (game.status === 'waiting') {
+      if (index === 0 || game.players.length <= 1) {
+        if (useMongoDB() && isValidObjectId(gameId)) await Game.findByIdAndDelete(gameId);
+        else deleteGame(gameId);
         io.to(gameId).emit('game-cancelled', { message: 'Host cancelled or closed the lobby' });
         return;
       }
-
-      if (leavingPlayerIndex !== -1) {
-        const [leavingPlayer] = game.players.splice(leavingPlayerIndex, 1);
-        await saveGameState(gameId, game);
-        socket.leave(gameId);
-        io.to(gameId).emit('player-left', { playerId, playerName: leavingPlayer?.name });
-        io.to(gameId).emit('game-state', serializeGameState(game));
-      }
-    } catch (error) {
-      console.error('Error handling player leave:', error);
-    }
-  });
-
-  // Delete game room explicitly
-  socket.on('delete-game', async ({ gameId }) => {
-    try {
-      if (useMongoDB() && isValidObjectId(gameId)) {
-        await Game.findByIdAndDelete(gameId);
-      } else {
-        deleteGame(gameId);
-      }
-      io.to(gameId).emit('game-deleted', { gameId });
-    } catch (error) {
-      console.error('Error deleting game:', error);
-    }
-  });
-
-  // Roll dice
-  socket.on('roll-dice', async ({ gameId, playerId }) => {
-    try {
-      const game: any = await getGameById(gameId);
-      
-      if (!game || game.currentTurn !== playerId) {
-        socket.emit('error', { message: 'Not your turn' });
-        return;
-      }
-
-      const dice1 = Math.floor(Math.random() * 6) + 1;
-      const dice2 = Math.floor(Math.random() * 6) + 1;
-      const total = dice1 + dice2;
-
-      const player = game.players.find((p: any) => p.id === playerId);
-      if (!player) {
-        socket.emit('error', { message: 'Player not found' });
-        return;
-      }
-
-      // Move player
-      const newPosition = (player.position + total) % 40;
-      const passedGo = player.position + total >= 40;
-      
-      player.position = newPosition;
-      if (passedGo) {
-        player.money += 200; // Pass Go, collect $200
-      }
-
+      game.players.splice(index, 1);
       await saveGameState(gameId, game);
+    } else if (game.status === 'in-progress' && !player.bankrupt) {
+      // Leaving mid-game forfeits: assets return to the bank and the turn moves on.
+      const wasTurn = game.currentTurn === playerId;
+      declareBankrupt(game, player);
+      if (wasTurn) await endPlayerTurn(game, gameId, io);
+      else if (activePlayers(game).length <= 1) await finishGame(game, gameId, io);
+      else await saveGameState(gameId, game);
+    }
 
-      io.to(gameId).emit('dice-rolled', {
-        playerId,
-        dice: [dice1, dice2],
-        total,
-        newPosition,
-        passedGo,
-      });
+    io.to(gameId).emit('player-left', { playerId, playerName: player.name });
+    io.to(gameId).emit('game-state', serializeGameState(game));
+  });
 
-      // Check what space player landed on
-      const property = game.boardState.find((p: any) => p.position === newPosition);
-      if (property) {
-        if (property.specialType === 'chance') {
-          const card = getRandomChanceCard();
-          applyCardEffect(game, player, card, io, gameId);
-          socket.emit('debugging-card-drawn', {
-            card,
-            playerId,
-            property: property.name,
-          });
-        } else if (property.specialType === 'community-chest') {
-          const card = getRandomCommunityChestCard();
-          applyCardEffect(game, player, card, io, gameId);
-          socket.emit('debugging-card-drawn', {
-            card,
-            playerId,
-            property: property.name,
-          });
-        } else {
-          let challenge;
-          if (!property.ownerId && property.price > 0) {
-            const selected = challengeForTier(property.color || 'brown');
-            game.pendingChallenges = game.pendingChallenges || {};
-            game.pendingChallenges[playerId] = { challengeId: selected.id, propertyId: property.id };
-            await saveGameState(gameId, game);
-            challenge = publicChallenge(selected);
-          }
-          io.to(gameId).emit('landed-on-space', {
-            playerId,
-            property,
-            canBuy: !property.ownerId && property.price > 0,
-            mustPayRent: property.ownerId && property.ownerId !== playerId,
-            challenge,
-          });
+  onGame('delete-game', async ({ game, gameId, playerId }) => {
+    if (game.players[0]?.id !== playerId || game.status !== 'waiting') {
+      return void socket.emit('error', { message: 'Only the host can close a lobby that has not started' });
+    }
+    if (useMongoDB() && isValidObjectId(gameId)) await Game.findByIdAndDelete(gameId);
+    else deleteGame(gameId);
+    io.to(gameId).emit('game-deleted', { gameId });
+  });
+
+  onGame('roll-dice', async ({ game, player, gameId, playerId }) => {
+    if (game.status === 'finished') return void socket.emit('error', { message: 'Game is over' });
+    if (player.bankrupt) return void socket.emit('error', { message: 'You are bankrupt' });
+    if (game.currentTurn !== playerId) return void socket.emit('error', { message: 'Not your turn' });
+    if (game.hasRolled) return void socket.emit('error', { message: 'You already rolled this turn' });
+
+    if (game.status === 'waiting') {
+      if (game.players.length < 2) return void socket.emit('error', { message: 'Need at least 2 players to start' });
+      game.status = 'in-progress';
+      game.startTime = new Date();
+      game.endsAt = new Date(Date.now() + GAME_DURATION_MS);
+    }
+    if (clockExpired(game)) return void (await finishGame(game, gameId, io));
+
+    const dice1 = dice.roll();
+    const dice2 = dice.roll();
+    const total = dice1 + dice2;
+    game.hasRolled = true;
+
+    if (player.inJail) {
+      if (dice1 === dice2) {
+        player.inJail = false;
+        player.jailTurns = 0;
+      } else {
+        player.jailTurns = (player.jailTurns || 0) + 1;
+        if (player.jailTurns < MAX_JAIL_TURNS) {
+          await saveGameState(gameId, game);
+          io.to(gameId).emit('dice-rolled', { playerId, dice: [dice1, dice2], total, newPosition: player.position, passedGo: false });
+          return void (await endPlayerTurn(game, gameId, io));
+        }
+        // Third failed attempt: pay the fine and move.
+        player.inJail = false;
+        player.jailTurns = 0;
+        if (charge(game, player, JAIL_FINE).bankrupt) {
+          await saveGameState(gameId, game);
+          io.to(gameId).emit('dice-rolled', { playerId, dice: [dice1, dice2], total, newPosition: player.position, passedGo: false });
+          return void (await endPlayerTurn(game, gameId, io));
         }
       }
-    } catch (error) {
-      console.error('Error rolling dice:', error);
-      socket.emit('error', { message: 'Failed to roll dice' });
     }
+
+    const passedGo = player.position + total >= 40;
+    player.position = (player.position + total) % 40;
+    if (passedGo) player.money += 200;
+    const newPosition = player.position;
+    const events: Array<() => void> = [];
+    events.push(() => io.to(gameId).emit('dice-rolled', { playerId, dice: [dice1, dice2], total, newPosition, passedGo }));
+
+    const endAfter = await resolveLanding(game, player, gameId, events, false);
+    await saveGameState(gameId, game);
+    events.forEach(emit => emit());
+    if (endAfter || player.bankrupt) await endPlayerTurn(game, gameId, io);
   });
 
+  // Resolves the square the player is standing on. Returns true when the turn
+  // must end immediately (bankruptcy or jail). Queues socket emissions so they
+  // fire only after the new state is saved.
+  async function resolveLanding(game: any, player: any, gameId: string, events: Array<() => void>, fromCard: boolean): Promise<boolean> {
+    const space = game.boardState.find((p: any) => p.position === player.position);
+    if (!space) return false;
+    const playerId = player.id;
+    const landed = (extra: Record<string, unknown> = {}) =>
+      events.push(() => io.to(gameId).emit('landed-on-space', { playerId, property: space, canBuy: false, mustPayRent: false, ...extra }));
+
+    switch (space.specialType) {
+      case 'chance':
+      case 'community-chest': {
+        if (fromCard) return false;
+        const card = space.specialType === 'chance' ? getRandomChanceCard() : getRandomCommunityChestCard();
+        events.push(() => socket.emit('debugging-card-drawn', { card, playerId, property: space.name }));
+        return await applyCardEffect(game, player, card, gameId, events);
+      }
+      case 'tax': {
+        const result = charge(game, player, space.rent || 0);
+        landed();
+        events.push(() => io.to(gameId).emit('card-effect', { playerId, message: `${player.name} paid $${result.paid} in ${space.name}`, moneyChange: -result.paid }));
+        return result.bankrupt;
+      }
+      case 'go-to-jail': {
+        player.position = JAIL_POSITION;
+        player.inJail = true;
+        player.jailTurns = 0;
+        landed();
+        return true;
+      }
+      case 'go':
+      case 'jail':
+      case 'free-parking':
+        landed();
+        return false;
+    }
+
+    if (!(space.price > 0)) {
+      landed();
+      return false;
+    }
+
+    if (!space.ownerId) {
+      const canBuy = player.money >= space.price;
+      let challenge;
+      if (canBuy) {
+        const selected = challengeForTier(space.color || 'brown');
+        game.pendingChallenges = game.pendingChallenges || {};
+        game.pendingChallenges[playerId] = { challengeId: selected.id, propertyId: space.id };
+        touchMixed(game);
+        challenge = publicChallenge(selected);
+      }
+      landed({ canBuy, challenge });
+      return false;
+    }
+
+    if (space.ownerId !== playerId) {
+      const owner = game.players.find((p: any) => p.id === space.ownerId);
+      if (owner && !owner.bankrupt) {
+        game.rentDue = { playerId, propertyId: space.id };
+        touchMixed(game);
+        landed({ mustPayRent: true });
+        return false;
+      }
+    }
+    landed();
+    return false;
+  }
+
   // Legacy client-authoritative purchase path is intentionally disabled.
-  socket.on('buy-property', ({ gameId, playerId, propertyId }) => {
-    void gameId; void playerId; void propertyId;
+  socket.on('buy-property', () => {
     socket.emit('error', { message: 'Solve and submit the server challenge before purchasing.' });
   });
 
-  // Challenge to code duel
-  socket.on('challenge-duel', async ({ gameId, challengerId, defenderId, propertyId }) => {
-    try {
-      const game: any = await getGameById(gameId);
-      
-      if (!game) {
-        socket.emit('error', { message: 'Game not found' });
-        return;
-      }
+  // Code duels are not implemented server-side yet. They previously awarded wins
+  // without running any code, so they are disabled rather than exploitable.
+  for (const event of ['challenge-duel', 'submit-duel-code', 'duel-code-update']) {
+    socket.on(event, () => socket.emit('error', { message: 'Code duels are not available yet.' }));
+  }
 
-      const property = game.boardState.find((p: any) => p.id === propertyId);
-      if (!property) {
-        socket.emit('error', { message: 'Property not found' });
-        return;
-      }
-
-      const mockProblem = {
-        id: `problem-${Date.now()}`,
-        title: 'Code Duel Challenge',
-        description: 'Solve this problem faster than your opponent!',
-        functionName: 'solution',
-        functionSignatures: {
-          javascript: 'function solution() {\n    // Your code here\n}',
-          python: 'def solution():\n    # Your code here\n    pass',
-          cpp: 'int solution() {\n    // Your code here\n    return 0;\n}',
-          java: 'public int solution() {\n    // Your code here\n    return 0;\n}',
-        },
-        testCases: [],
-        timeLimit: 300,
-      };
-
-      // Create duel
-      game.activeDuel = {
-        id: `duel-${Date.now()}`,
-        challengerId,
-        defenderId,
-        propertyId,
-        problemId: mockProblem.id,
-        startTime: new Date(),
-        status: 'active',
-      };
-
-      await saveGameState(gameId, game);
-
-      io.to(gameId).emit('duel-started', {
-        duel: game.activeDuel,
-        problem: mockProblem,
-        challengerId,
-      });
-    } catch (error) {
-      console.error('Error starting duel:', error);
-      socket.emit('error', { message: 'Failed to start duel' });
-    }
+  onGame('end-turn', async ({ game, gameId, playerId }) => {
+    if (game.status === 'finished') return void socket.emit('error', { message: 'Game is over' });
+    if (game.currentTurn !== playerId) return void socket.emit('error', { message: 'Not your turn' });
+    if (game.rentDue?.playerId === playerId) return void socket.emit('error', { message: 'Pay your rent before ending the turn' });
+    await endPlayerTurn(game, gameId, io);
   });
 
-  // Submit code in duel
-  socket.on('submit-duel-code', async ({ gameId, playerId }) => {
-    try {
-      const game: any = await getGameById(gameId);
-      
-      if (!game || !game.activeDuel) {
-        socket.emit('error', { message: 'No active duel' });
-        return;
-      }
+  onGame('pay-rent', async ({ game, player, gameId, playerId }) => {
+    const due = game.rentDue;
+    if (game.status !== 'in-progress' || game.currentTurn !== playerId || !due || due.playerId !== playerId) {
+      return void socket.emit('error', { message: 'No rent is due' });
+    }
+    const property = game.boardState.find((p: any) => p.id === due.propertyId);
+    const owner = property && game.players.find((p: any) => p.id === property.ownerId);
+    if (!property || !owner || owner.id === playerId || player.position !== property.position) {
+      game.rentDue = null;
+      touchMixed(game);
+      await saveGameState(gameId, game);
+      return void socket.emit('error', { message: 'Invalid rent request' });
+    }
 
-      const isChallenger = game.activeDuel.challengerId === playerId;
-      const isDefender = game.activeDuel.defenderId === playerId;
+    const { paid, bankrupt } = charge(game, player, calculateRent(property), owner);
+    game.rentDue = null;
+    touchMixed(game);
+    await saveGameState(gameId, game);
+    io.to(gameId).emit('rent-paid', { playerId, ownerId: owner.id, propertyId: property.id, amount: paid });
+    if (bankrupt) io.to(gameId).emit('card-effect', { playerId, message: `${player.name} went bankrupt!`, moneyChange: -paid });
+    await endPlayerTurn(game, gameId, io);
+  });
 
-      if (!isChallenger && !isDefender) {
-        socket.emit('error', { message: 'You are not in this duel' });
-        return;
-      }
+  onGame('upgrade-property', async ({ game, player, gameId, playerId }, { propertyId }) => {
+    const property = game.boardState.find((p: any) => p.id === propertyId);
+    if (game.status !== 'in-progress' || player.bankrupt || !property || property.ownerId !== playerId || (property.houses || 0) >= 5) {
+      return void socket.emit('error', { message: 'Cannot upgrade this property' });
+    }
+    const houseCost = property.houseCost || 50;
+    if (player.money < houseCost) return void socket.emit('error', { message: 'Not enough money' });
 
-      const solvingPlayer = game.players.find((p: any) => p.id === playerId);
-      if (solvingPlayer?.name) {
-        recordProblemSolved(solvingPlayer.name).catch(err => console.error('Error recording duel solve:', err));
-      }
+    property.houses = (property.houses || 0) + 1;
+    player.money -= houseCost;
+    await saveGameState(gameId, game);
+    io.to(gameId).emit('property-upgraded', { playerId, propertyId, houses: property.houses });
+  });
 
-      const solvedKey = isChallenger ? 'challengerSolved' : 'defenderSolved';
-      game.activeDuel[solvedKey] = true;
-      game.activeDuel[isChallenger ? 'challengerTime' : 'defenderTime'] = Date.now() - new Date(game.activeDuel.startTime).getTime();
-      
-      const challengerSolved = isChallenger || game.activeDuel.challengerSolved;
-      const defenderSolved = isDefender || game.activeDuel.defenderSolved;
+  // The clock is server-authoritative; this only nudges an immediate check.
+  onGame('game-time-up', async ({ game, gameId }) => {
+    if (clockExpired(game)) await finishGame(game, gameId, io);
+  });
 
-      if (challengerSolved && defenderSolved) {
-        const challengerTime = game.activeDuel.challengerTime || Infinity;
-        const defenderTime = game.activeDuel.defenderTime || Infinity;
-        
-        if (challengerTime < defenderTime) {
-          game.activeDuel.status = 'challenger-won';
-        } else {
-          game.activeDuel.status = 'defender-won';
-        }
-      } else if (challengerSolved || defenderSolved) {
-        if (challengerSolved) {
-          game.activeDuel.status = 'challenger-won';
-        } else {
-          game.activeDuel.status = 'defender-won';
+  onGame('get-game-state', async ({ game }) => {
+    socket.emit('game-state', serializeGameState(game));
+  });
+
+  async function applyCardEffect(game: any, player: any, card: DebuggingCard, gameId: string, events: Array<() => void>): Promise<boolean> {
+    const message = `${player.name} ${card.message}`;
+    if (card.effect.money) {
+      const amount = card.effect.money;
+      let moneyChange = amount;
+      if (amount > 0) player.money += amount;
+      else {
+        const result = charge(game, player, -amount);
+        moneyChange = -result.paid;
+        if (result.bankrupt) {
+          events.push(() => io.to(gameId).emit('card-effect', { playerId: player.id, message, moneyChange }));
+          return true;
         }
       }
-
-      await saveGameState(gameId, game);
-
-      io.to(gameId).emit('duel-progress', {
-        playerId,
-        solved: true,
-        time: game.activeDuel[isChallenger ? 'challengerTime' : 'defenderTime'],
-      });
-
-      if (game.activeDuel.status !== 'active') {
-        await handleDuelEnd(game, io);
-      }
-    } catch (error) {
-      console.error('Error submitting duel code:', error);
-      socket.emit('error', { message: 'Failed to submit code' });
+      events.push(() => io.to(gameId).emit('card-effect', { playerId: player.id, message, moneyChange }));
     }
-  });
 
-  // End turn (for manual turn ending or skipping)
-  socket.on('end-turn', async ({ gameId, playerId }) => {
-    try {
-      const game: any = await getGameById(gameId);
-      
-      if (!game || game.currentTurn !== playerId) {
-        socket.emit('error', { message: 'Not your turn' });
-        return;
-      }
-
-      await endPlayerTurn(game, gameId, io);
-    } catch (error) {
-      console.error('Error ending turn:', error);
-      socket.emit('error', { message: 'Failed to end turn' });
+    if (card.effect.move) {
+      const raw = player.position + card.effect.move;
+      if (raw >= 40) player.money += 200;
+      player.position = ((raw % 40) + 40) % 40;
+      const newPosition = player.position;
+      events.push(() => io.to(gameId).emit('card-effect', { playerId: player.id, message, newPosition }));
+      return await resolveLanding(game, player, gameId, events, true);
     }
-  });
-
-  // Pay rent
-  socket.on('pay-rent', async ({ gameId, playerId, propertyId }) => {
-    try {
-      const game: any = await getGameById(gameId);
-      
-      if (!game) {
-        socket.emit('error', { message: 'Game not found' });
-        return;
-      }
-
-      const property = game.boardState.find((p: any) => p.id === propertyId);
-      const player = game.players.find((p: any) => p.id === playerId);
-      const owner = game.players.find((p: any) => p.id === property.ownerId);
-
-      if (!property || !player || !owner) {
-        socket.emit('error', { message: 'Invalid property or player' });
-        return;
-      }
-
-      const rent = calculateRent(property);
-      player.money -= rent;
-      owner.money += rent;
-
-      await saveGameState(gameId, game);
-
-      io.to(gameId).emit('rent-paid', {
-        playerId,
-        ownerId: owner.id,
-        propertyId,
-        amount: rent,
-      });
-
-      // Automatically end turn after paying rent
-      console.log(`💸 Rent paid by ${player.name}, ending turn...`);
-      try {
-        await endPlayerTurn(game, gameId, io);
-      } catch (turnError) {
-        console.error('Error ending turn after rent payment:', turnError);
-      }
-    } catch (error) {
-      console.error('Error paying rent:', error);
-      socket.emit('error', { message: 'Failed to pay rent' });
-    }
-  });
-
-  // Upgrade property
-  socket.on('upgrade-property', async ({ gameId, playerId, propertyId }) => {
-    try {
-      const game: any = await getGameById(gameId);
-      
-      if (!game) {
-        socket.emit('error', { message: 'Game not found' });
-        return;
-      }
-
-      const property = game.boardState.find((p: any) => p.id === propertyId);
-      const player = game.players.find((p: any) => p.id === playerId);
-
-      if (!property || property.ownerId !== playerId || property.houses >= 5) {
-        socket.emit('error', { message: 'Cannot upgrade this property' });
-        return;
-      }
-
-      const houseCost = property.houseCost || 50;
-      if (player.money < houseCost) {
-        socket.emit('error', { message: 'Not enough money' });
-        return;
-      }
-
-      property.houses += 1;
-      player.money -= houseCost;
-
-      await saveGameState(gameId, game);
-
-      io.to(gameId).emit('property-upgraded', {
-        playerId,
-        propertyId,
-        houses: property.houses,
-      });
-    } catch (error) {
-      console.error('Error upgrading property:', error);
-      socket.emit('error', { message: 'Failed to upgrade property' });
-    }
-  });
-
-  // Duel code update
-  socket.on('duel-code-update', ({ gameId, playerId, code }) => {
-    io.to(gameId).emit('duel-code-update', { playerId, code });
-  });
-
-  // Game time up
-  socket.on('game-time-up', async ({ gameId }) => {
-    try {
-      const game: any = await getGameById(gameId);
-      
-      if (!game) return;
-
-      game.status = 'finished';
-      await saveGameState(gameId, game);
-
-      const winnerName = computeWinnerName(game.players);
-      await recordGameResult(game.players, winnerName);
-
-      io.to(gameId).emit('game-over', { gameId, winnerName });
-    } catch (error) {
-      console.error('Error ending game:', error);
-    }
-  });
-
-  // Get game state
-  socket.on('get-game-state', async ({ gameId }) => {
-    try {
-      const game: any = await getGameById(gameId);
-      
-      if (!game) {
-        socket.emit('error', { message: 'Game not found' });
-        return;
-      }
-
-      socket.emit('game-state', serializeGameState(game));
-    } catch (error) {
-      console.error('Error getting game state:', error);
-      socket.emit('error', { message: 'Failed to get game state' });
-    }
-  });
-}
-
-async function handleDuelEnd(game: any, io: Server) {
-  const duel = game.activeDuel;
-  const property = game.boardState.find((p: any) => p.id === duel.propertyId);
-  const challenger = game.players.find((p: any) => p.id === duel.challengerId);
-  const defender = game.players.find((p: any) => p.id === duel.defenderId);
-
-  if (duel.status === 'challenger-won') {
-    if (property.houses > 0) {
-      property.houses -= 1;
-    }
-  } else {
-    const rent = calculateRent(property);
-    challenger.money -= rent * 2;
-    defender.money += rent * 2;
+    return false;
   }
-
-  game.activeDuel = undefined;
-  const gameId = game._id ? String(game._id) : game.id;
-  await saveGameState(gameId, game);
-
-  io.to(gameId).emit('duel-ended', {
-    winner: duel.status === 'challenger-won' ? duel.challengerId : duel.defenderId,
-    result: duel.status,
-  });
-}
-
-function applyCardEffect(game: any, player: any, card: DebuggingCard, io: Server, gameId: string) {
-  if (card.effect.money) {
-    player.money += card.effect.money;
-    if (card.effect.money > 0) {
-      io.to(gameId).emit('card-effect', {
-        playerId: player.id,
-        message: `${player.name} ${card.message}`,
-        moneyChange: card.effect.money,
-      });
-    }
-  }
-  
-  if (card.effect.move) {
-    const newPosition = (player.position + card.effect.move + 40) % 40;
-    player.position = newPosition;
-    io.to(gameId).emit('card-effect', {
-      playerId: player.id,
-      message: `${player.name} ${card.message}`,
-      newPosition,
-    });
-  }
-  
-  saveGameState(gameId, game).catch(err => console.error('Error applying card effect:', err));
 }
 
 function calculateRent(property: any): number {
   const baseRent = property.rent || 0;
   const numSolutions = property.houses || 0;
-  
+
   let difficultyMultiplier = 1.0;
   if (property.price > 200) {
     difficultyMultiplier = 2.0;
   } else if (property.price > 100) {
     difficultyMultiplier = 1.5;
   }
-  
+
   const rent = baseRent * (1 + (numSolutions * difficultyMultiplier));
-  
+
   if (property.rentWithHouse && property.rentWithHouse.length > 0) {
     if (numSolutions === 0) {
       return baseRent;
@@ -598,6 +518,6 @@ function calculateRent(property: any): number {
       return property.rentWithHouse[numSolutions - 1] || rent;
     }
   }
-  
+
   return Math.round(rent);
 }

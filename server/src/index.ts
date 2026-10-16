@@ -7,13 +7,15 @@ import dotenv from 'dotenv';
 import gameRoutes from './routes/gameRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import { Game } from './models/Game.js';
-import { setupSocketHandlers } from './socket/socketHandlers.js';
+import { setupSocketHandlers, expireOverdueGames } from './socket/socketHandlers.js';
 import { cleanInactiveGames } from './utils/memoryStore.js';
+import { rateLimit } from './utils/rateLimit.js';
 import { createCodeRoutes } from './routes/codeRoutes.js';
 
 dotenv.config();
 
 const app = express();
+app.set('trust proxy', 1); // behind Railway/Render so req.ip is the real client
 
 const defaultOrigins = [
   'http://localhost:3000',
@@ -31,12 +33,20 @@ const envOrigins = (process.env.CLIENT_URLS || process.env.CLIENT_URL || '')
 
 const allowedOrigins = [...new Set([...defaultOrigins, ...envOrigins])];
 
+// Dev and LAN play: localhost and private-network hosts are always allowed.
+const privateHost = /^https?:\/\/(localhost|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$/;
+const hostedSuffixes = ['.vercel.app', '.railway.app', '.onrender.com'];
+
 const corsOriginDelegate = (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-  if (!origin) return callback(null, true);
-  if (allowedOrigins.includes(origin) || allowedOrigins.includes('*') || origin.endsWith('.vercel.app') || origin.endsWith('.railway.app') || origin.endsWith('.onrender.com')) {
-    return callback(null, true);
-  }
-  return callback(null, true); // Permissive for game lobbies across web devices
+  if (!origin) return callback(null, true); // same-origin / non-browser clients
+  let host = '';
+  try { host = new URL(origin).hostname; } catch { /* malformed origin */ }
+  const allowed =
+    allowedOrigins.includes('*') ||
+    allowedOrigins.includes(origin) ||
+    privateHost.test(origin) ||
+    hostedSuffixes.some(suffix => host.endsWith(suffix));
+  return callback(null, allowed);
 };
 
 const httpServer = createServer(app);
@@ -68,6 +78,7 @@ app.get('/health', (_req, res) => {
 });
 
 // Routes
+app.use('/api/auth', rateLimit(20, 60_000));
 app.use('/api', authRoutes);
 app.use('/api', gameRoutes);
 app.use('/api/code', createCodeRoutes(io));
@@ -124,6 +135,11 @@ setInterval(async () => {
     console.error('Error during scheduled lobby cleanup:', err.message);
   }
 }, CLEANUP_INTERVAL_MS);
+
+// Server-authoritative game clock: finish any game whose time has run out.
+setInterval(() => {
+  expireOverdueGames(io).catch(err => console.error('Error expiring games:', err.message));
+}, 30 * 1000);
 
 const PORT = process.env.PORT || 5001;
 

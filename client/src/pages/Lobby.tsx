@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { QRCodeSVG } from 'qrcode.react';
-import { getApiUrl, getSession, clearSession, refreshProfile, type PlayerProfile } from '../lib/session';
+import { getApiUrl, getSession, clearSession, refreshProfile, setPlayerCreds, type PlayerProfile } from '../lib/session';
 
 type Mode = 'menu' | 'create' | 'join' | 'stats';
 
@@ -48,9 +48,9 @@ export default function Lobby() {
         playerName: profile.username,
         avatar: profile.avatar,
       });
-      const { gameId, roomCode: code, playerId } = res.data;
-      if (gameId && playerId) {
-        sessionStorage.setItem(`codepoly.player.${gameId}`, playerId);
+      const { gameId, roomCode: code, playerId, token } = res.data;
+      if (gameId && playerId && token) {
+        setPlayerCreds(gameId, { playerId, token });
         sessionStorage.setItem(`codepoly.room.${gameId}`, code);
       }
       navigate(`/game/${gameId}`, { state: { roomCode: code, playerId, playerName: profile.username } });
@@ -76,9 +76,9 @@ export default function Lobby() {
         playerName: profile.username,
         avatar: profile.avatar,
       });
-      const { gameId, playerId } = res.data;
-      if (gameId && playerId) {
-        sessionStorage.setItem(`codepoly.player.${gameId}`, playerId);
+      const { gameId, playerId, token } = res.data;
+      if (gameId && playerId && token) {
+        setPlayerCreds(gameId, { playerId, token });
         sessionStorage.setItem(`codepoly.room.${gameId}`, code);
       }
       navigate(`/game/${gameId}`, { state: { roomCode: code, playerId, playerName: profile.username } });

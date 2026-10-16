@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { getApiUrl } from '../lib/session';
+import { getApiUrl, getPlayerCreds } from '../lib/session';
 
 export type CodeLanguage = 'javascript' | 'python' | 'cpp' | 'java';
 export interface CodeTestResult { index: number; passed: boolean; input: string; expected: string; actual?: string; }
@@ -8,7 +8,10 @@ interface CodeRequest { gameId: string; playerId: string; challengeId: string; l
 
 async function request(path: 'run'|'submit', body: CodeRequest): Promise<CodeResult> {
   try {
-    const { data } = await axios.post(`${getApiUrl()}/code/${path}`, body, { timeout: 30000 });
+    const { data } = await axios.post(`${getApiUrl()}/code/${path}`, body, {
+      timeout: 30000,
+      headers: { 'x-player-token': getPlayerCreds(body.gameId)?.token ?? '' },
+    });
     return data;
   } catch (error: any) {
     const message = error.response?.data?.error || error.response?.data?.message || 'Code execution service is unavailable.';
