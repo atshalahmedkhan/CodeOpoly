@@ -8,6 +8,9 @@ function useMongoDB() {
   return mongoose.connection.readyState === 1;
 }
 
+// Usernames are case-insensitive everywhere (matches the in-memory fallback).
+const CI = { collation: { locale: 'en', strength: 2 } } as const;
+
 // In-memory fallback so login still works if MongoDB is unreachable.
 const memoryUsers = new Map<string, any>();
 
@@ -39,7 +42,7 @@ router.post('/auth/login', async (req, res) => {
     }
 
     if (useMongoDB()) {
-      let user = await User.findOne({ username: rawName });
+      let user = await User.findOne({ username: rawName }).collation(CI.collation);
       if (!user) {
         user = await User.create({ username: rawName, avatar });
       } else {
@@ -70,7 +73,7 @@ router.post('/auth/login', async (req, res) => {
     return res.json({ user: publicUser(user) });
   } catch (error: any) {
     console.error('Error during login:', error);
-    res.status(500).json({ error: error.message || 'Login failed' });
+    res.status(500).json({ error: 'Login failed' });
   }
 });
 
@@ -79,7 +82,7 @@ router.get('/users/:username', async (req, res) => {
   try {
     const name = req.params.username;
     if (useMongoDB()) {
-      const user = await User.findOne({ username: name });
+      const user = await User.findOne({ username: name }).collation(CI.collation);
       if (!user) return res.status(404).json({ error: 'User not found' });
       return res.json({ user: publicUser(user) });
     }
@@ -88,7 +91,7 @@ router.get('/users/:username', async (req, res) => {
     return res.json({ user: publicUser(user) });
   } catch (error: any) {
     console.error('Error fetching user:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Request failed' });
   }
 });
 
@@ -105,7 +108,7 @@ router.get('/leaderboard', async (_req, res) => {
     return res.json({ leaderboard: users.map(publicUser) });
   } catch (error: any) {
     console.error('Error fetching leaderboard:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Request failed' });
   }
 });
 
@@ -120,7 +123,7 @@ export async function recordProblemSolved(username: string) {
           $inc: { problemsSolved: 1 },
           $set: { lastSeen: new Date() },
         },
-        { upsert: true }
+        { upsert: true, ...CI }
       );
     } else {
       const key = username.toLowerCase();
@@ -153,7 +156,7 @@ export async function recordTurnCompleted(username: string) {
           $inc: { roundsPlayed: 1 },
           $set: { lastSeen: new Date() },
         },
-        { upsert: true }
+        { upsert: true, ...CI }
       );
     } else {
       const key = username.toLowerCase();
@@ -193,7 +196,7 @@ export async function recordGameResult(players: any[], winnerName: string) {
             },
             $set: { lastSeen: new Date() },
           },
-          { upsert: true }
+          { upsert: true, ...CI }
         );
       } else {
         const key = (p.name || '').toLowerCase();

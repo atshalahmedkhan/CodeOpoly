@@ -7,7 +7,7 @@ CodeOpoly deploys in two separate pieces: the Vite frontend and the Express/Sock
 1. Sign in to [vercel.com](https://vercel.com) with GitHub.
 2. Import the repo, and set the project's **Root Directory** to `client`.
 3. Vercel will pick up `client/vercel.json` (build command `npm run build`, output `dist`).
-4. Set environment variables (`VITE_FIREBASE_*`) in the Vercel project settings.
+4. Set `VITE_API_URL` (and optionally `VITE_SOCKET_URL`) in the Vercel project settings.
 5. Deploy.
 
 ## Backend (Railway)

@@ -29,10 +29,16 @@ export interface IPlayer {
   inJail: boolean;
   jailTurns: number;
   socketId?: string;
+  token?: string;
+  bankrupt?: boolean;
 }
 
 export interface IGame extends Document {
   pendingChallenges?: Record<string, { challengeId: string; propertyId: string }>;
+  rentDue?: { playerId: string; propertyId: string } | null;
+  hasRolled?: boolean;
+  endsAt?: Date;
+  winnerName?: string;
   roomCode: string;
   status: 'waiting' | 'in-progress' | 'finished';
   players: IPlayer[];
@@ -83,6 +89,8 @@ const PlayerSchema = new Schema<IPlayer>({
   inJail: { type: Boolean, default: false },
   jailTurns: { type: Number, default: 0 },
   socketId: String,
+  token: String,
+  bankrupt: { type: Boolean, default: false },
 });
 
 const GameSchema = new Schema<IGame>({
@@ -95,6 +103,10 @@ const GameSchema = new Schema<IGame>({
   lastActivity: { type: Date, default: Date.now },
   boardState: [PropertySchema],
   pendingChallenges: { type: Schema.Types.Mixed, default: {} },
+  rentDue: { type: Schema.Types.Mixed, default: null },
+  hasRolled: { type: Boolean, default: false },
+  endsAt: Date,
+  winnerName: String,
   activeDuel: {
     id: String,
     challengerId: String,

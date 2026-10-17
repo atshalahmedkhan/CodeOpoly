@@ -5,6 +5,7 @@ import { generateRoomCode } from '../utils/roomCode.js';
 import { initializeBoard } from '../utils/boardInitializer.js';
 import { saveGame, findGameById, findGameByRoomCode, updateGame, deleteGame, getAllGames } from '../utils/memoryStore.js';
 import mongoose from 'mongoose';
+import { newPlayerId, newPlayerToken, publicPlayers, tokenMatches } from '../utils/playerAuth.js';
 
 const router = express.Router();
 
@@ -34,20 +35,22 @@ router.post('/games/create', async (req, res) => {
   try {
     const { playerName, avatar } = req.body;
     
-    if (!playerName) {
+    if (typeof playerName !== 'string' || !playerName.trim()) {
       return res.status(400).json({ error: 'Player name is required' });
     }
 
     const roomCode = generateRoomCode(6);
     const boardState = initializeBoard();
-    const playerId = `player-${Date.now()}`;
+    const playerId = newPlayerId();
+    const token = newPlayerToken();
 
     const gameData = {
       roomCode,
       status: 'waiting' as const,
       players: [{
         id: playerId,
-        name: playerName,
+        token,
+        name: String(playerName).trim().slice(0, 20),
         avatar: avatar || '💻',
         position: 0,
         money: 1500,
@@ -68,7 +71,8 @@ router.post('/games/create', async (req, res) => {
       return res.json({
         gameId: String(game._id),
         roomCode: game.roomCode,
-        playerId: game.players[0].id,
+        playerId,
+        token,
       });
     } else {
       console.log('⚠️  MongoDB not connected, using in-memory store');
@@ -76,14 +80,13 @@ router.post('/games/create', async (req, res) => {
       return res.json({
         gameId: game._id,
         roomCode: game.roomCode,
-        playerId: game.players[0].id,
+        playerId,
+        token,
       });
     }
   } catch (error: any) {
     console.error('Error creating game:', error);
-    res.status(500).json({ 
-      error: error.message || 'Internal server error',
-    });
+    res.status(500).json({ error: 'Could not create the game' });
   }
 });
 
@@ -92,7 +95,7 @@ router.post('/games/join', async (req, res) => {
   try {
     const { roomCode, playerName, avatar } = req.body;
 
-    if (!roomCode || !playerName) {
+    if (typeof roomCode !== 'string' || typeof playerName !== 'string' || !roomCode || !playerName.trim()) {
       return res.status(400).json({ error: 'Room code and player name are required' });
     }
 
@@ -117,20 +120,17 @@ router.post('/games/join', async (req, res) => {
       return res.status(400).json({ error: 'Game is full (maximum 4 players)' });
     }
 
-    // Check if player name already in room
-    const existingPlayer = game.players.find((p: any) => p.name.toLowerCase() === playerName.trim().toLowerCase());
-    if (existingPlayer) {
-      const id = game._id ? String(game._id) : game.id;
-      return res.json({
-        gameId: id,
-        roomCode: game.roomCode,
-        playerId: existingPlayer.id,
-      });
+    // A name already in the room cannot be claimed again: rejoining requires the
+    // player's secret token (kept in that browser's sessionStorage).
+    const taken = game.players.some((p: any) => p.name.toLowerCase() === playerName.trim().toLowerCase());
+    if (taken) {
+      return res.status(409).json({ error: 'That name is already in this room.' });
     }
 
     const newPlayer = {
-      id: `player-${Date.now()}`,
-      name: playerName.trim(),
+      id: newPlayerId(),
+      token: newPlayerToken(),
+      name: playerName.trim().slice(0, 20),
       avatar: avatar || '💻',
       position: 0,
       money: 1500,
@@ -153,10 +153,11 @@ router.post('/games/join', async (req, res) => {
       gameId,
       roomCode: game.roomCode,
       playerId: newPlayer.id,
+      token: newPlayer.token,
     });
   } catch (error: any) {
     console.error('Error joining game:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Could not join the game' });
   }
 });
 
@@ -175,30 +176,32 @@ router.get('/games/:gameId', async (req, res) => {
       return res.status(404).json({ error: 'Game not found' });
     }
 
-    res.json(game);
+    const plain: any = typeof (game as any).toObject === 'function' ? (game as any).toObject() : { ...game };
+    res.json({ ...plain, players: publicPlayers((game as any).players) });
   } catch (error: any) {
     console.error('Error fetching game:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Could not load the game' });
   }
 });
 
-// Delete a game / lobby (e.g., when host cancels or game ends)
+// Delete a lobby that has not started. Only the host (first player) may do so.
 router.delete('/games/:gameId', async (req, res) => {
   try {
     const gameId = req.params.gameId;
-    let deleted = false;
+    const game: any = useMongoDB() && isValidObjectId(gameId) ? await Game.findById(gameId) : findGameById(gameId);
+    if (!game) return res.json({ success: true, deleted: false, gameId });
 
-    if (useMongoDB() && isValidObjectId(gameId)) {
-      const result = await Game.findByIdAndDelete(gameId);
-      deleted = !!result;
-    } else {
-      deleted = deleteGame(gameId);
+    const host = game.players[0];
+    if (!host || !tokenMatches(host.token, req.headers['x-player-token']) || game.status !== 'waiting') {
+      return res.status(403).json({ error: 'Only the host can delete a lobby that has not started' });
     }
 
-    res.json({ success: true, deleted, gameId });
+    if (useMongoDB() && isValidObjectId(gameId)) await Game.findByIdAndDelete(gameId);
+    else deleteGame(gameId);
+    res.json({ success: true, deleted: true, gameId });
   } catch (error: any) {
     console.error('Error deleting game:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Could not delete the game' });
   }
 });
 
@@ -218,7 +221,7 @@ router.get('/problems', async (req, res) => {
     return res.json([]);
   } catch (error: any) {
     console.error('Error fetching problems:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Could not load problems' });
   }
 });
 

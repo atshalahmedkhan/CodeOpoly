@@ -78,19 +78,7 @@ RAPIDAPI_KEY=your-rapidapi-key-here
 JUDGE0_API_URL=https://judge0-ce.p.rapidapi.com
 ```
 
-**`client/.env`**
-```env
-VITE_FIREBASE_API_KEY=...
-VITE_FIREBASE_AUTH_DOMAIN=...
-VITE_FIREBASE_PROJECT_ID=...
-```
 
-> ⚠️ **Known issue**: `client/src/services/judge0Service.ts` currently calls the RapidAPI Judge0
-> endpoint directly from the browser using `VITE_JUDGE0_API_KEY`. Anything prefixed `VITE_` is
-> bundled into the client JS and is visible to anyone who opens dev tools — so if that key is
-> ever set, it's effectively public. The server already has its own `judge0Service.ts` wired into
-> `socketHandlers.ts`; code execution should be routed entirely through the server so the RapidAPI
-> key never ships to the browser. Not fixed yet — flagging so it isn't shipped as-is.
 
 ### 3. Run it
 

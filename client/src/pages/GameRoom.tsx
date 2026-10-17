@@ -19,7 +19,7 @@ import { useGameEffects } from '../hooks/useGameEffects';
 import DiceParticles from '../components/particles/DiceParticles';
 import ConfettiParticles from '../components/particles/ConfettiParticles';
 import GoldenRingEffect from '../components/particles/GoldenRingEffect';
-import { getSocketUrl, getApiUrl, getSession } from '../lib/session';
+import { getSocketUrl, getApiUrl, getSession, getPlayerCreds, setPlayerCreds } from '../lib/session';
 import type { Problem } from '../data/problemBank';
 
 // Turn Timer Component for Right Sidebar
@@ -202,9 +202,7 @@ export default function GameRoom() {
   const session = getSession();
 
   const [playerId, setPlayerId] = useState<string>(() => {
-    const fromState = location.state?.playerId;
-    const fromStorage = gameId ? sessionStorage.getItem(`codepoly.player.${gameId}`) : null;
-    return fromState || fromStorage || '';
+    return gameId ? getPlayerCreds(gameId)?.playerId ?? '' : '';
   });
 
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -275,28 +273,20 @@ export default function GameRoom() {
     }
 
     if (!playerId) {
-      // Try resolving from backend
+      // No credentials for this game in this tab (e.g. opened an invite link): join as a new player.
+      // Re-claiming an existing name is not possible without its secret token.
       const apiUrl = getApiUrl();
       axios.get(`${apiUrl}/games/${gameId}`).then((res) => {
-        const game = res.data;
-        const found = game?.players?.find((p: any) => p.name.toLowerCase() === session.username.toLowerCase());
-        if (found) {
-          setPlayerId(found.id);
-          sessionStorage.setItem(`codepoly.player.${gameId}`, found.id);
-        } else {
-          // Auto-join game
-          axios.post(`${apiUrl}/games/join`, {
-            roomCode: game.roomCode,
-            playerName: session.username,
-            avatar: session.avatar,
-          }).then((joinRes) => {
-            setPlayerId(joinRes.data.playerId);
-            sessionStorage.setItem(`codepoly.player.${gameId}`, joinRes.data.playerId);
-          }).catch(() => {
-            navigate('/lobby');
-          });
-        }
-      }).catch(() => {
+        return axios.post(`${apiUrl}/games/join`, {
+          roomCode: res.data.roomCode,
+          playerName: session.username,
+          avatar: session.avatar,
+        });
+      }).then((joinRes) => {
+        setPlayerCreds(gameId, { playerId: joinRes.data.playerId, token: joinRes.data.token });
+        setPlayerId(joinRes.data.playerId);
+      }).catch((e) => {
+        toast.error(e?.response?.data?.error || 'Could not join this game.');
         navigate('/lobby');
       });
     }
@@ -318,7 +308,7 @@ export default function GameRoom() {
     });
 
     // Join game
-    newSocket.emit('join-game', { gameId, playerId });
+    newSocket.emit('join-game', { gameId, playerId, token: getPlayerCreds(gameId)?.token });
 
     // Listen for game state updates
     newSocket.on('game-state', (state: GameState) => {
@@ -733,22 +723,8 @@ export default function GameRoom() {
   };
 
   const handleCodeDuel = () => {
-    if (socket && gameId && playerId && landedProperty) {
-      const owner = playersRef.current.find((p: any) => p.id === landedProperty.ownerId);
-      if (owner) {
-        socket.emit('challenge-duel', {
-          gameId,
-          challengerId: playerId,
-          defenderId: owner.id,
-          propertyId: landedProperty.id,
-        });
-        addEvent({
-          type: 'duel',
-          message: `⚔️ ${getPlayerNameById(playersRef.current, playerId)} challenged ${owner.name} to a code duel!`,
-          player: playerId,
-        });
-      }
-    }
+    // Server-side duels are not implemented yet (they used to award wins without running code).
+    toast('Code duels are coming soon. Pay the rent for now.', { icon: '⚔️' });
   };
 
   const handlePropertyCardBuy = () => {

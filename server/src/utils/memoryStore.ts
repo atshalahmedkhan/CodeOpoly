@@ -11,6 +11,10 @@ export interface GameData {
   boardState: any[];
   activeDuel?: any;
   pendingChallenges?: Record<string, { challengeId: string; propertyId: string }>;
+  rentDue?: { playerId: string; propertyId: string } | null;
+  hasRolled?: boolean;
+  endsAt?: Date;
+  winnerName?: string;
 }
 
 const games = new Map<string, GameData>();
@@ -28,6 +32,10 @@ export function saveGame(game: any): GameData {
     boardState: game.boardState,
     activeDuel: game.activeDuel,
     pendingChallenges: game.pendingChallenges || {},
+    rentDue: game.rentDue ?? null,
+    hasRolled: !!game.hasRolled,
+    endsAt: game.endsAt,
+    winnerName: game.winnerName,
   };
   games.set(gameData._id, gameData);
   return gameData;

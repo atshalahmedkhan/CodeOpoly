@@ -118,3 +118,26 @@ export async function refreshProfile(username: string): Promise<PlayerProfile | 
   }
 }
 
+
+// Per-game player credentials. The token is the secret that proves who you are to
+// the server, so it lives in sessionStorage (this tab only) and is never displayed.
+export interface PlayerCreds { playerId: string; token: string; }
+
+export function setPlayerCreds(gameId: string, creds: PlayerCreds) {
+  try {
+    sessionStorage.setItem(`codepoly.player.${gameId}`, creds.playerId);
+    sessionStorage.setItem(`codepoly.token.${gameId}`, creds.token);
+  } catch {
+    /* ignore storage failures */
+  }
+}
+
+export function getPlayerCreds(gameId: string): PlayerCreds | null {
+  try {
+    const playerId = sessionStorage.getItem(`codepoly.player.${gameId}`);
+    const token = sessionStorage.getItem(`codepoly.token.${gameId}`);
+    return playerId && token ? { playerId, token } : null;
+  } catch {
+    return null;
+  }
+}
